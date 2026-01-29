@@ -214,8 +214,12 @@ export class LettaBot {
         adapter.sendTypingIndicator(msg.chatId).catch(() => {});
       }, 4000);
       
+      let streamCount = 0;
       try {
+        console.log('[Bot] Entering stream loop...');
         for await (const streamMsg of session.stream()) {
+          streamCount++;
+          console.log(`[Bot] Stream msg #${streamCount}: type=${streamMsg.type}, content=${streamMsg.type === 'assistant' ? streamMsg.content?.slice(0, 50) + '...' : '(n/a)'}`);
           if (streamMsg.type === 'assistant') {
             response += streamMsg.content;
             
@@ -260,32 +264,44 @@ export class LettaBot {
         clearInterval(typingInterval);
       }
       
+      console.log(`[Bot] Stream complete. Total messages: ${streamCount}, Response length: ${response.length}`);
+      console.log(`[Bot] Response preview: ${response.slice(0, 100)}...`);
+      
       // Send final response
       if (response) {
+        console.log(`[Bot] Sending final response (messageId=${messageId})`);
         try {
           if (messageId) {
             await adapter.editMessage(msg.chatId, messageId, response);
+            console.log('[Bot] Edited existing message');
           } else {
             await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
+            console.log('[Bot] Sent new message');
           }
-        } catch {
+        } catch (sendError) {
+          console.error('[Bot] Error sending final message:', sendError);
           // If we already sent a streamed message, don't duplicate — the user already saw it.
           if (!messageId) {
             await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
           }
         }
       } else {
+        console.log('[Bot] No response from agent, sending placeholder');
         await adapter.sendMessage({ chatId: msg.chatId, text: '(No response from agent)', threadId: msg.threadId });
       }
       
     } catch (error) {
-      console.error('Error processing message:', error);
+      console.error('[Bot] Error processing message:', error);
+      if (error instanceof Error) {
+        console.error('[Bot] Error stack:', error.stack);
+      }
       await adapter.sendMessage({
         chatId: msg.chatId,
         text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         threadId: msg.threadId,
       });
     } finally {
+      console.log('[Bot] Closing session');
       session!?.close();
     }
   }
