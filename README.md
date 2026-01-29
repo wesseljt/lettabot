@@ -56,11 +56,6 @@ Run the interactive onboarding wizard:
 lettabot onboard
 ```
 
-This will guide you through:
-1. Setting up your Letta API key (or Docker server URL) 
-2. Configuring Telegram (and optionally Slack, WhatsApp, Signal)
-3. Enabling heartbeat and scheduled tasks
-
 ### Run
 
 ```bash
@@ -80,7 +75,8 @@ That's it! Message your bot on Telegram.
 | `lettabot destroy` | Delete all local data and start fresh |
 | `lettabot help` | Show help |
 
-## Multi-Channel Architecture
+
+## Channel Setup
 
 LettaBot uses a **single agent with a single conversation** across all channels:
 
@@ -95,8 +91,6 @@ WhatsApp ──┘
 - Continue it on Slack
 - Pick it up on WhatsApp
 - The agent remembers everything!
-
-## Channel Setup
 
 | Channel | Guide | Requirements |
 |---------|-------|--------------|
@@ -116,8 +110,18 @@ At least one channel is required. Telegram is the easiest to start with.
 | `/heartbeat` | Manually trigger a heartbeat check-in |
 
 ## Skills
+LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
 
-LettaBot supports skills that extend the agent's capabilities.
+```bash
+# Interactive search
+npm run skills:find
+
+# Install skill packs
+npm run skills:add supabase/agent-skills
+npm run skills:add anthropics/skills
+```
+
+Once you install a skill, you need to import it to your agent with `lettabot skills`.
 
 ### View Skills
 
@@ -147,20 +151,6 @@ Some skills are automatically enabled based on your configuration:
 |---------|--------|----------------|
 | Scheduling | `CRON_ENABLED=true` | `scheduling` |
 | Gmail | `GMAIL_ACCOUNT=...` | `gog`, `google` |
-
-### Install from skills.sh
-
-LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
-
-```bash
-# Interactive search
-npm run skills:find
-
-# Install skill packs
-npm run skills:add supabase/agent-skills
-npm run skills:add anthropics/skills
-```
-Once you install a skill, you need to import it to your agent with `lettabot skills` (check the status with `lettabot skills status`)
 
 ## Security
 
