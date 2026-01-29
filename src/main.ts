@@ -9,7 +9,32 @@ import 'dotenv/config';
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
+
+// Find and set LETTA_CLI_PATH if not already set (SDK needs this to find the CLI)
+if (!process.env.LETTA_CLI_PATH) {
+  try {
+    // Try to resolve the letta CLI location
+    const lettaPath = execSync('which letta', { encoding: 'utf-8' }).trim();
+    if (lettaPath && existsSync(lettaPath)) {
+      process.env.LETTA_CLI_PATH = lettaPath;
+      console.log(`[CLI] Found letta at: ${lettaPath}`);
+    }
+  } catch {
+    // Try resolving from node_modules
+    try {
+      const { createRequire } = await import('node:module');
+      const require = createRequire(import.meta.url);
+      const cliPath = require.resolve('@letta-ai/letta-code/letta.js');
+      if (existsSync(cliPath)) {
+        process.env.LETTA_CLI_PATH = cliPath;
+        console.log(`[CLI] Found letta-code at: ${cliPath}`);
+      }
+    } catch {
+      console.warn('[CLI] Could not find letta CLI - SDK may fail to spawn sessions');
+    }
+  }
+}
 
 // Load agent ID from store and set as env var (SDK needs this)
 // Load agent ID from store file, or use LETTA_AGENT_ID env var as fallback
