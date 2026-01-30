@@ -50,7 +50,24 @@ See the [documentation](https://docs.letta.com/guides/docker/) for more details 
 
 ### Setup
 
-Run the interactive onboarding wizard:
+**Option 1: Quick Setup (Recommended)**
+
+Set environment variables and run non-interactive setup:
+
+```bash
+# Configure Letta
+export LETTA_API_KEY="letta_..."        # From app.letta.com
+
+# Configure Telegram
+export TELEGRAM_BOT_TOKEN="123456:ABC-DEF..."  # From @BotFather
+
+# Run setup
+lettabot onboard --non-interactive
+```
+
+**Option 2: Interactive Wizard**
+
+For step-by-step guidance:
 
 ```bash
 lettabot onboard
@@ -63,6 +80,8 @@ lettabot server
 ```
 
 That's it! Message your bot on Telegram.
+
+> **Note:** For detailed environment variable reference and multi-channel setup, see [SKILL.md](./SKILL.md)
 
 ## Skills
 LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
