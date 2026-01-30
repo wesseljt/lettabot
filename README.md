@@ -1,12 +1,12 @@
 # LettaBot
 
-Your personal AI assistant that remembers everything across **Telegram, Slack, WhatsApp, and Signal**. Powered by the [Letta Code SDK](https://github.com/letta-ai/letta-code-sdk).
+Your personal AI assistant that remembers everything across **Telegram, Slack, Discord, WhatsApp, and Signal**. Powered by the [Letta Code SDK](https://github.com/letta-ai/letta-code-sdk).
 
 <img width="750" alt="lettabot-preview" src="https://github.com/user-attachments/assets/9f01b845-d5b0-447b-927d-ae15f9ec7511" />
 
 ## Features
 
-- **Multi-Channel** - Chat seamlessly across Telegram, Slack, WhatsApp, and Signal
+- **Multi-Channel** - Chat seamlessly across Telegram, Slack, Discord, WhatsApp, and Signal
 - **Unified Memory** - Single agent remembers everything from all channels
 - **Persistent Memory** - Agent remembers conversations across sessions (days/weeks/months)
 - **Local Tool Execution** - Agent can read files, search code, run commands on your machine
@@ -129,9 +129,10 @@ LettaBot uses a **single agent with a single conversation** across all channels:
 
 ```
 Telegram ──┐
-           ├──→ ONE AGENT ──→ ONE CONVERSATION
-Slack ─────┤    (memory)      (chat history)
-WhatsApp ──┘
+Slack ─────┤
+Discord ───┼──→ ONE AGENT ──→ ONE CONVERSATION
+WhatsApp ──┤    (memory)      (chat history)
+Signal ────┘
 ```
 
 - Start a conversation on Telegram
@@ -143,6 +144,7 @@ WhatsApp ──┘
 |---------|-------|--------------|
 | Telegram | [Setup Guide](docs/getting-started.md) | Bot token from @BotFather |
 | Slack | [Setup Guide](docs/slack-setup.md) | Slack app with Socket Mode |
+| Discord | [Setup Guide](docs/discord-setup.md) | Discord bot + Message Content Intent |
 | WhatsApp | [Setup Guide](docs/whatsapp-setup.md) | Phone with WhatsApp |
 | Signal | [Setup Guide](docs/signal-setup.md) | signal-cli + phone number |
 
@@ -172,6 +174,7 @@ letta --agent <agent_id>
 |---------|-----------------|---------------|
 | Telegram | Long-polling (outbound HTTP) | None |
 | Slack | Socket Mode (outbound WebSocket) | None |
+| Discord | Gateway (outbound WebSocket) | None |
 | WhatsApp | Outbound WebSocket via Baileys | None |
 | Signal | Local daemon on 127.0.0.1 | None |
 
@@ -235,6 +238,7 @@ lettabot destroy
 
 - [Getting Started](docs/getting-started.md)
 - [Slack Setup](docs/slack-setup.md)
+- [Discord Setup](docs/discord-setup.md)
 - [WhatsApp Setup](docs/whatsapp-setup.md)
 - [Signal Setup](docs/signal-setup.md)
 
