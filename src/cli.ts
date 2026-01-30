@@ -106,8 +106,8 @@ async function server() {
       env: { ...process.env },
     });
   } else {
-    // Fallback to tsx for development
-    const mainTsPath = new URL('./main.ts', import.meta.url).pathname;
+    // Fallback to tsx for development (use src/main.ts, not relative to dist/)
+    const mainTsPath = resolve(process.cwd(), 'src/main.ts');
     spawn('npx', ['tsx', mainTsPath], {
       stdio: 'inherit',
       cwd: process.cwd(),
