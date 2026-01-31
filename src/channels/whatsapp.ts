@@ -266,7 +266,9 @@ Ask the bot owner to approve with:
             const { loadConfig } = await import('../config/index.js');
             const config = loadConfig();
             if (!config.transcription?.apiKey && !process.env.OPENAI_API_KEY) {
-              console.log('[WhatsApp] Voice message received but no OpenAI API key configured, skipping');
+              await this.sock!.sendMessage(remoteJid, { 
+                text: 'Voice messages require OpenAI API key for transcription. See: https://github.com/letta-ai/lettabot#voice-messages' 
+              });
               continue;
             }
             

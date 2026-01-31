@@ -143,7 +143,7 @@ Ask the bot owner to approve with:
           const { loadConfig } = await import('../config/index.js');
           const config = loadConfig();
           if (!config.transcription?.apiKey && !process.env.OPENAI_API_KEY) {
-            console.log('[Discord] Audio attachment received but no OpenAI API key configured, skipping');
+            await message.reply('Voice messages require OpenAI API key for transcription. See: https://github.com/letta-ai/lettabot#voice-messages');
           } else {
             // Download audio
             const response = await fetch(audioAttachment.url);

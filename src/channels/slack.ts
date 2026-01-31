@@ -62,7 +62,7 @@ export class SlackAdapter implements ChannelAdapter {
           const { loadConfig } = await import('../config/index.js');
           const config = loadConfig();
           if (!config.transcription?.apiKey && !process.env.OPENAI_API_KEY) {
-            console.log('[Slack] Audio file received but no OpenAI API key configured, skipping');
+            await say('Voice messages require OpenAI API key for transcription. See: https://github.com/letta-ai/lettabot#voice-messages');
           } else {
             // Download file (requires bot token for auth)
             const response = await fetch(audioFile.url_private_download, {

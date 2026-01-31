@@ -507,7 +507,12 @@ This code expires in 1 hour.`;
           const { loadConfig } = await import('../config/index.js');
           const config = loadConfig();
           if (!config.transcription?.apiKey && !process.env.OPENAI_API_KEY) {
-            console.log('[Signal] Voice message received but no OpenAI API key configured, skipping');
+            if (chatId) {
+              await this.sendMessage({ 
+                chatId, 
+                text: 'Voice messages require OpenAI API key for transcription. See: https://github.com/letta-ai/lettabot#voice-messages' 
+              });
+            }
           } else {
             const { readFileSync } = await import('node:fs');
             const buffer = readFileSync(voiceAttachment.filename);

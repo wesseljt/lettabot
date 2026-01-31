@@ -178,7 +178,7 @@ export class TelegramAdapter implements ChannelAdapter {
       const { loadConfig } = await import('../config/index.js');
       const config = loadConfig();
       if (!config.transcription?.apiKey && !process.env.OPENAI_API_KEY) {
-        console.log('[Telegram] Voice message received but no OpenAI API key configured, skipping');
+        await ctx.reply('Voice messages require OpenAI API key for transcription. See: https://github.com/letta-ai/lettabot#voice-messages');
         return;
       }
       
