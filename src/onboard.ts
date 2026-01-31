@@ -1395,13 +1395,13 @@ export async function onboard(options?: { nonInteractive?: boolean }): Promise<v
     },
     whatsapp: { 
       enabled: existingConfig.channels.whatsapp?.enabled || false,
-      selfChat: existingConfig.channels.whatsapp?.selfChat,
+      selfChat: existingConfig.channels.whatsapp?.selfChat ?? true, // Default true
       dmPolicy: existingConfig.channels.whatsapp?.dmPolicy,
     },
     signal: { 
       enabled: existingConfig.channels.signal?.enabled || false,
       phone: existingConfig.channels.signal?.phone,
-      selfChat: existingConfig.channels.signal?.selfChat,
+      selfChat: existingConfig.channels.signal?.selfChat ?? true, // Default true
       dmPolicy: existingConfig.channels.signal?.dmPolicy,
     },
     google: {

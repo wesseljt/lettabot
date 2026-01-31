@@ -123,8 +123,9 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   }
   if (config.channels.whatsapp?.enabled) {
     env.WHATSAPP_ENABLED = 'true';
-    if (config.channels.whatsapp.selfChat) {
-      env.WHATSAPP_SELF_CHAT_MODE = 'true';
+    // WhatsApp selfChat defaults to true, so only set env if explicitly false
+    if (config.channels.whatsapp.selfChat === false) {
+      env.WHATSAPP_SELF_CHAT_MODE = 'false';
     }
   }
   if (config.channels.signal?.phone) {
