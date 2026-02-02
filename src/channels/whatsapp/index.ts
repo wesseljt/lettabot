@@ -871,6 +871,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
     // WhatsApp doesn't support editing messages - no-op
   }
 
+  async addReaction(_chatId: string, _messageId: string, _emoji: string): Promise<void> {
+    // WhatsApp reactions via Baileys are not supported here yet
+  }
+
   async sendFile(file: OutboundFile): Promise<{ messageId: string }> {
     if (!this.sock) {
       throw new Error("WhatsApp not connected");
