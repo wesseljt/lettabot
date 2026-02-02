@@ -648,10 +648,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
       const userId = normalizePhoneForStorage(from);
       const isGroup = chatType === "group";
 
-      // CRITICAL: Skip messages older than connection time (prevents duplicate responses on reconnect)
+      // Skip messages that are too old (more than 5 min before connection)
+      // This allows recent messages from history sync while preventing ancient backfill
       const messageTimestampMs = extracted.timestamp.getTime();
-      if (messageTimestampMs < this.connectedAtMs) {
-        // This is an old message from before we connected - mark as read but don't auto-reply
+      const MAX_AGE_BEFORE_CONNECT_MS = 5 * 60 * 1000; // 5 minutes grace period
+      if (messageTimestampMs < this.connectedAtMs - MAX_AGE_BEFORE_CONNECT_MS) {
+        // This is an old message from well before we connected - mark as read but don't auto-reply
         if (messageId && !isExtractedSelfChat && this.sock) {
           await sendReadReceipt(this.sock, remoteJid, messageId, m.key?.participant);
         }
