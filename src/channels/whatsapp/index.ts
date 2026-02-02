@@ -484,8 +484,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
    * Attach event listeners to the socket.
    */
   private attachListeners(): void {
-    if (!this.sock) return;
+    if (!this.sock) {
+      console.warn('[WhatsApp] Cannot attach listeners - no socket');
+      return;
+    }
 
+    console.log('[WhatsApp] Attaching event listeners');
+    
     // Store refs for cleanup
     this.listenerRefs.connectionUpdate = this.boundHandleConnectionUpdate;
     this.listenerRefs.messagesUpsert = this.boundHandleMessagesUpsert;
@@ -552,6 +557,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
    */
   private async handleMessagesUpsert(data: MessagesUpsertData): Promise<void> {
     const { type, messages } = data;
+    
+    // DEBUG: Entry point logging
+    console.log(`[WhatsApp] messages.upsert: type=${type}, count=${messages.length}`);
+    
     this.lastMessageTime = new Date(); // Update for watchdog
 
     // For "append" (history sync), only process recent messages (last 5 minutes)
@@ -583,14 +592,20 @@ export class WhatsAppAdapter implements ChannelAdapter {
     for (const m of messagesToProcess) {
       const messageId = m.key.id || "";
       const remoteJid = m.key.remoteJid || "";
+      
+      if (process.env.DEBUG) {
+        console.log(`[WhatsApp] Processing msg: id=${messageId?.slice(-8)}, jid=${remoteJid}, fromMe=${m.key.fromMe}`);
+      }
 
       // Filter out status updates and broadcast messages
       if (isStatusOrBroadcast(remoteJid)) {
+        if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: status/broadcast`);
         continue;
       }
 
       // Skip messages we sent (prevents loop in selfChatMode)
       if (this.sentMessageIds.has(messageId)) {
+        if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: sent by us (loop prevention)`);
         this.sentMessageIds.delete(messageId);
         continue;
       }
@@ -598,6 +613,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       // Deduplicate using TTL cache
       const dedupeKey = `whatsapp:${remoteJid}:${messageId}`;
       if (this.dedupeCache.check(dedupeKey)) {
+        if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: duplicate`);
         continue; // Duplicate message - skip
       }
 
@@ -608,6 +624,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
         this.myNumber,
         this.config.selfChatMode || false
       );
+      if (process.env.DEBUG) console.log(`[WhatsApp] isSelfChat=${isSelfChat}, selfChatMode=${this.config.selfChatMode}`);
 
       // Track self-chat LID for reply conversion
       if (isSelfChat && isLid(remoteJid)) {
@@ -617,6 +634,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       // Skip own messages (unless selfChatMode enabled for self-chat)
       if (m.key.fromMe) {
         if (!(this.config.selfChatMode && isSelfChat)) {
+          if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: fromMe but not selfChat or selfChatMode disabled`);
           continue;
         }
       }
@@ -642,8 +660,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
         } : undefined
       );
 
-      if (!extracted) continue; // No text or invalid message
+      if (!extracted) {
+        if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: extraction returned null`);
+        continue; // No text or invalid message
+      }
 
+      if (process.env.DEBUG) console.log(`[WhatsApp] Extracted: body="${extracted.body?.slice(0, 50)}", isSelfChat=${extracted.isSelfChat}`);
       const { body, from, chatId, pushName, senderE164, chatType, isSelfChat: isExtractedSelfChat } = extracted;
       const userId = normalizePhoneForStorage(from);
       const isGroup = chatType === "group";
@@ -653,6 +675,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       const messageTimestampMs = extracted.timestamp.getTime();
       const MAX_AGE_BEFORE_CONNECT_MS = 5 * 60 * 1000; // 5 minutes grace period
       if (messageTimestampMs < this.connectedAtMs - MAX_AGE_BEFORE_CONNECT_MS) {
+        if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: too old (msg=${messageTimestampMs}, connected=${this.connectedAtMs})`);
         // This is an old message from well before we connected - mark as read but don't auto-reply
         if (messageId && !isExtractedSelfChat && this.sock) {
           await sendReadReceipt(this.sock, remoteJid, messageId, m.key?.participant);
@@ -661,9 +684,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
       }
 
       // Check access control for DMs only (groups are open, self-chat always allowed)
-      if (!isGroup && !isExtractedSelfChat) {
+      // Use the earlier isSelfChat check (handles LID) since extraction doesn't detect LID self-chat
+      const effectiveSelfChat = isSelfChat || isExtractedSelfChat;
+      if (process.env.DEBUG) console.log(`[WhatsApp] Access check: isGroup=${isGroup}, isSelfChat=${isSelfChat}, isExtractedSelfChat=${isExtractedSelfChat}, effective=${effectiveSelfChat}`);
+      if (!isGroup && !effectiveSelfChat) {
         // If selfChatMode is enabled, ONLY respond to self-chat messages
         if (this.config.selfChatMode) {
+          if (process.env.DEBUG) console.log(`[WhatsApp] SKIP: selfChatMode enabled but not detected as self-chat`);
           continue; // Silently ignore all non-self messages
         }
 
@@ -707,6 +734,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       }
 
       // Debounce and forward to bot core
+      if (process.env.DEBUG) console.log(`[WhatsApp] FORWARDING to agent: "${body?.slice(0, 50)}"`);
       await this.debouncer.enqueue({
         channel: "whatsapp",
         chatId,
