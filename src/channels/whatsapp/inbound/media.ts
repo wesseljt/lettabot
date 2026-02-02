@@ -141,6 +141,15 @@ export async function collectAttachments(params: {
 
     // Download and save
     const target = buildAttachmentPath(attachmentsDir, 'whatsapp', chatId, name);
+    
+    // Skip download if media key is missing (expired/forwarded content)
+    if (!mediaMessage.mediaKey) {
+      console.log(`[WhatsApp] Skipping attachment ${name} - no media key (likely expired or forwarded)`);
+      attachments.push(attachment);
+      const caption = mediaMessage.caption as string | undefined;
+      return { attachments, caption };
+    }
+    
     try {
       const stream = await downloadContentFromMessage(mediaMessage, mediaType);
       await writeStreamToFile(stream, target);

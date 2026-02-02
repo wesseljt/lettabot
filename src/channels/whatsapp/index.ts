@@ -554,8 +554,11 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const { type, messages } = data;
     this.lastMessageTime = new Date(); // Update for watchdog
 
-    // Only process "notify" (new message) and "append" (history)
-    if (type !== "notify" && type !== "append") {
+    // Only process "notify" (new messages), skip "append" (historical backfill)
+    if (type !== "notify") {
+      if (messages.length > 0) {
+        console.log(`[WhatsApp] Skipping ${messages.length} historical message(s) (type: ${type})`);
+      }
       return;
     }
 
@@ -673,9 +676,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
         }
       }
 
-      // Skip auto-reply for history messages
-      const isHistory = type === "append";
-
       // Send read receipts (unless self-chat)
       if (messageId && !isExtractedSelfChat && this.sock) {
         await sendReadReceipt(
@@ -686,19 +686,17 @@ export class WhatsAppAdapter implements ChannelAdapter {
         );
       }
 
-      // Debounce and forward to bot core (unless history)
-      if (!isHistory) {
-        await this.debouncer.enqueue({
-          channel: "whatsapp",
-          chatId,
-          userId,
-          userName: pushName || undefined,
-          messageId: m.key?.id || undefined,
-          text: body,
-          timestamp: extracted.timestamp,
-          isGroup,
-        });
-      }
+      // Debounce and forward to bot core
+      await this.debouncer.enqueue({
+        channel: "whatsapp",
+        chatId,
+        userId,
+        userName: pushName || undefined,
+        messageId: m.key?.id || undefined,
+        text: body,
+        timestamp: extracted.timestamp,
+        isGroup,
+      });
     }
   }
 
