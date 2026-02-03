@@ -40,7 +40,7 @@ import {
   checkInboundAccess,
   formatPairingMessage,
 } from "./inbound/access-control.js";
-import { detectMention } from "./inbound/mentions.js";
+import { applyGroupGating } from "./inbound/group-gating.js";
 
 // Outbound message handling
 import {
@@ -124,9 +124,6 @@ export class WhatsAppAdapter implements ChannelAdapter {
   // LID mapping for message sending
   private selfChatLid: string = "";
   private lidToJid: Map<string, string> = new Map();
-
-  // Group metadata caching (5 minute TTL)
-  private groupMetadataCache: Map<string, { metadata: GroupMetadata; fetchedAt: number }> = new Map();
 
   // Message tracking
   private sentMessageIds: Set<string> = new Set();
@@ -488,26 +485,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   /**
-   * Get group metadata with caching (5 minute TTL).
-   * Reduces API calls for frequently accessed groups.
+   * Get group metadata with caching (uses existing groupMetaCache).
    */
   private async getGroupMetadata(groupJid: string): Promise<GroupMetadata> {
     if (!this.sock) {
       throw new Error('Socket not connected');
     }
-
-    const cached = this.groupMetadataCache.get(groupJid);
-    const now = Date.now();
-    const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-    if (cached && now - cached.fetchedAt < CACHE_TTL) {
-      return cached.metadata;
-    }
-
-    // Fetch fresh metadata
-    const metadata = await this.sock.groupMetadata(groupJid);
-    this.groupMetadataCache.set(groupJid, { metadata, fetchedAt: now });
-    return metadata;
+    return await this.sock.groupMetadata(groupJid);
   }
 
   /**
@@ -723,35 +707,28 @@ export class WhatsAppAdapter implements ChannelAdapter {
         }
       }
 
-      // Detect mentions for ALL messages (groups and DMs) - consistent behavior
+      // Apply group gating (mention detection + allowlist)
       let wasMentioned = false;
-      const mentionResult = detectMention({
-        body: extracted.body,
-        mentionedJids: extracted.mentionedJids,
-        replyToSenderJid: extracted.replyContext?.senderJid,
-        replyToSenderE164: extracted.replyContext?.senderE164,
-        config: {
-          mentionPatterns: this.config.mentionPatterns || [],
-          selfE164: this.myNumber,
+      if (isGroup) {
+        const gatingResult = applyGroupGating({
+          msg: extracted,
+          groupJid: remoteJid,
           selfJid: this.myJid,
           selfLid: this.myLid,
-        },
-      });
-      wasMentioned = mentionResult.wasMentioned;
+          selfE164: this.myNumber,
+          groupsConfig: this.config.groups,
+          mentionPatterns: this.config.mentionPatterns,
+        });
 
-      // For groups: apply mention gating if required
-      if (isGroup) {
-        const groupConfig = this.config.groups?.[remoteJid];
-        const wildcardConfig = this.config.groups?.['*'];
-        const requireMention = groupConfig?.requireMention ?? wildcardConfig?.requireMention ?? true;
-
-        if (requireMention && !wasMentioned) {
-          console.log(`[WhatsApp] Group message skipped: mention-required`);
+        if (!gatingResult.shouldProcess) {
+          console.log(`[WhatsApp] Group message skipped: ${gatingResult.reason}`);
           continue;
         }
+
+        wasMentioned = gatingResult.wasMentioned ?? false;
       }
 
-      // Set mention status for agent context (both groups and DMs)
+      // Set mention status for agent context
       extracted.wasMentioned = wasMentioned;
 
       // Skip auto-reply for history messages
@@ -781,6 +758,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
           groupName: extracted.groupSubject,
           wasMentioned: extracted.wasMentioned,
           replyToUser: extracted.replyToSenderE164,
+          attachments: extracted.attachments,
         });
       }
     }

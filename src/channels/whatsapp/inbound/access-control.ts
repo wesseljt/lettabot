@@ -7,6 +7,7 @@
 
 import { isUserAllowed, upsertPairingRequest } from "../../../pairing/store.js";
 import type { DmPolicy } from "../../../pairing/types.js";
+import { normalizePhoneForStorage } from "../../../utils/phone.js";
 
 /**
  * Parameters for access control check
@@ -150,9 +151,12 @@ export async function checkInboundAccess(
         return { allowed: false, reason: 'group-no-allowlist' };
       }
 
-      // Check wildcard or specific sender
+      // Check wildcard or specific sender (normalize phones for consistent comparison)
       const hasWildcard = allowlist.includes('*');
-      const senderAllowed = hasWildcard || (senderE164 && allowlist.includes(senderE164));
+      const normalizedSender = senderE164 ? normalizePhoneForStorage(senderE164) : null;
+      const senderAllowed = hasWildcard || (normalizedSender && allowlist.some(num =>
+        normalizePhoneForStorage(num) === normalizedSender
+      ));
 
       if (!senderAllowed) {
         return { allowed: false, reason: 'group-sender-blocked' };

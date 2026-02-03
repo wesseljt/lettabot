@@ -1,11 +1,12 @@
 /**
  * Message Envelope Formatter
- * 
+ *
  * Formats incoming messages with metadata context for the agent.
  * Based on moltbot's envelope pattern.
  */
 
 import type { InboundMessage } from './types.js';
+import { normalizePhoneForStorage } from '../utils/phone.js';
 
 /**
  * Channel format hints - tells the agent what formatting syntax to use
@@ -220,7 +221,8 @@ export function formatMessageEnvelope(
 
   // Reply context (if replying to someone)
   if (msg.replyToUser) {
-    const formattedReply = formatPhoneNumber(msg.replyToUser);
+    const normalizedReply = normalizePhoneForStorage(msg.replyToUser);
+    const formattedReply = formatPhoneNumber(normalizedReply);
     parts.push(`via ${formattedReply}`);
   }
 
