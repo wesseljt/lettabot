@@ -4,7 +4,7 @@
  * Single agent, single conversation - chat continues across all channels.
  */
 
-import { createSession, resumeSession, type Session } from '@letta-ai/letta-code-sdk';
+import { createAgent, createSession, resumeSession, type Session } from '@letta-ai/letta-code-sdk';
 import { mkdirSync } from 'node:fs';
 import type { ChannelAdapter } from '../channels/types.js';
 import type { BotConfig, InboundMessage, TriggerContext } from './types.js';
@@ -185,12 +185,11 @@ export class LettaBot {
     let session: Session;
     let usedDefaultConversation = false;
     let usedSpecificConversation = false;
-    // Base options for all sessions (model only included for new agents)
+    // Base options for sessions (systemPrompt/memory set via createAgent for new agents)
     const baseOptions = {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
-      systemPrompt: SYSTEM_PROMPT,
       // bypassPermissions mode auto-allows all tools, no canUseTool callback needed
     };
     
@@ -211,7 +210,12 @@ export class LettaBot {
       } else {
         // Create new agent with default conversation
         console.log('[Bot] Creating new agent');
-        session = createSession(undefined, { ...baseOptions, model: this.config.model, memory: loadMemoryBlocks(this.config.agentName) });
+        const newAgentId = await createAgent({
+          model: this.config.model,
+          systemPrompt: SYSTEM_PROMPT,
+          memory: loadMemoryBlocks(this.config.agentName),
+        });
+        session = createSession(newAgentId, baseOptions);
       }
       console.log('[Bot] Session created/resumed');
       
@@ -450,12 +454,11 @@ export class LettaBot {
     text: string,
     _context?: TriggerContext
   ): Promise<string> {
-    // Base options (model only for new agents)
+    // Base options for sessions (systemPrompt/memory set via createAgent for new agents)
     const baseOptions = {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
-      systemPrompt: SYSTEM_PROMPT,
       // bypassPermissions mode auto-allows all tools, no canUseTool callback needed
     };
     
@@ -472,7 +475,12 @@ export class LettaBot {
       session = resumeSession(this.store.agentId, baseOptions);
     } else {
       // Create new agent with default conversation
-      session = createSession(undefined, { ...baseOptions, model: this.config.model, memory: loadMemoryBlocks(this.config.agentName) });
+      const newAgentId = await createAgent({
+        model: this.config.model,
+        systemPrompt: SYSTEM_PROMPT,
+        memory: loadMemoryBlocks(this.config.agentName),
+      });
+      session = createSession(newAgentId, baseOptions);
     }
     
     try {
