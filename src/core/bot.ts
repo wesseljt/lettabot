@@ -191,7 +191,15 @@ export class LettaBot {
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
       // bypassPermissions mode auto-allows all tools, no canUseTool callback needed
+      // But add logging callback to diagnose approval flow issues (#132)
+      canUseTool: (toolName: string, toolInput: Record<string, unknown>) => {
+        console.log(`[Bot] Tool approval requested: ${toolName} (should be auto-approved by bypassPermissions)`);
+        console.log(`[Bot] WARNING: canUseTool callback should NOT be called when permissionMode=bypassPermissions`);
+        // Return allow anyway as fallback
+        return { behavior: 'allow' as const };
+      },
     };
+    console.log('[Bot] Session options:', { permissionMode: baseOptions.permissionMode, allowedTools: baseOptions.allowedTools?.length });
     
     console.log('[Bot] Creating/resuming session');
     try {
@@ -373,8 +381,14 @@ export class LettaBot {
           }
           
           if (streamMsg.type === 'result') {
+            // Log result details for debugging (#132)
+            const resultMsg = streamMsg as { result?: string; success?: boolean; error?: string };
+            console.log(`[Bot] Stream result: success=${resultMsg.success}, hasResponse=${response.trim().length > 0}, resultLen=${resultMsg.result?.length || 0}`);
+            if (resultMsg.error) {
+              console.error(`[Bot] Result error: ${resultMsg.error}`);
+            }
+            
             // Check for corrupted conversation (empty result usually means error)
-            const resultMsg = streamMsg as { result?: string; success?: boolean };
             if (resultMsg.success && resultMsg.result === '' && !response.trim()) {
               console.error('[Bot] Warning: Agent returned empty result with no response.');
               console.error('[Bot] This often indicates a corrupted conversation.');
@@ -433,6 +447,9 @@ export class LettaBot {
       
       // Only show "no response" if we never sent anything
       if (!sentAnyMessage) {
+        console.warn('[Bot] No message sent during stream - sending "(No response from agent)"');
+        console.warn('[Bot] This may indicate: tool approval hang, stream error, or ADE session conflict');
+        console.warn('[Bot] Check if ADE web interface is open - simultaneous access can cause this issue');
         await adapter.sendMessage({ chatId: msg.chatId, text: '(No response from agent)', threadId: msg.threadId });
       }
       
@@ -493,6 +510,12 @@ export class LettaBot {
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
       // bypassPermissions mode auto-allows all tools, no canUseTool callback needed
+      // But add logging callback to diagnose approval flow issues (#132)
+      canUseTool: (toolName: string, _toolInput: Record<string, unknown>) => {
+        console.log(`[Bot] Tool approval requested in sendToAgent: ${toolName}`);
+        console.log(`[Bot] WARNING: canUseTool callback should NOT be called when permissionMode=bypassPermissions`);
+        return { behavior: 'allow' as const };
+      },
     };
     
     let session: Session;
