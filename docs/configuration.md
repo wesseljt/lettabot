@@ -6,10 +6,15 @@ Complete reference for LettaBot configuration options.
 
 LettaBot checks these locations in order:
 
-1. `./lettabot.yaml` - Project-local (recommended)
-2. `./lettabot.yml` - Project-local alternate
-3. `~/.lettabot/config.yaml` - User global
-4. `~/.lettabot/config.yml` - User global alternate
+1. `LETTABOT_CONFIG` env var - Explicit path override
+2. `./lettabot.yaml` - Project-local (recommended)
+3. `./lettabot.yml` - Project-local alternate
+4. `~/.lettabot/config.yaml` - User global
+5. `~/.lettabot/config.yml` - User global alternate
+
+For global installs (`npm install -g`), either:
+- Create `~/.lettabot/config.yaml`, or
+- Set `export LETTABOT_CONFIG=/path/to/your/config.yaml`
 
 ## Example Configuration
 
@@ -203,6 +208,7 @@ Environment variables override config file values:
 
 | Env Variable | Config Equivalent |
 |--------------|-------------------|
+| `LETTABOT_CONFIG` | Path to config file (overrides search order) |
 | `LETTA_API_KEY` | `server.apiKey` |
 | `LETTA_BASE_URL` | `server.baseUrl` |
 | `LETTA_AGENT_ID` | `agent.id` |

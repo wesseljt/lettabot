@@ -23,8 +23,20 @@ const DEFAULT_CONFIG_PATH = join(homedir(), '.lettabot', 'config.yaml');
 
 /**
  * Find the config file path (first existing, or default)
+ * 
+ * Priority:
+ * 1. LETTABOT_CONFIG env var (explicit override)
+ * 2. ./lettabot.yaml (project-local)
+ * 3. ./lettabot.yml (project-local alt)
+ * 4. ~/.lettabot/config.yaml (user global)
+ * 5. ~/.lettabot/config.yml (user global alt)
  */
 export function resolveConfigPath(): string {
+  // Environment variable takes priority
+  if (process.env.LETTABOT_CONFIG) {
+    return resolve(process.env.LETTABOT_CONFIG);
+  }
+  
   for (const p of CONFIG_PATHS) {
     if (existsSync(p)) {
       return p;

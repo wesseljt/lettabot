@@ -105,12 +105,13 @@ async function server() {
   if (!existsSync(configPath)) {
     console.log(`
 No config file found. Searched locations:
-  1. ./lettabot.yaml (project-local - recommended)
-  2. ./lettabot.yml
-  3. ~/.lettabot/config.yaml (user global)
-  4. ~/.lettabot/config.yml
+  1. LETTABOT_CONFIG env var (not set)
+  2. ./lettabot.yaml (project-local - recommended)
+  3. ./lettabot.yml
+  4. ~/.lettabot/config.yaml (user global)
+  5. ~/.lettabot/config.yml
 
-Run "lettabot onboard" to create a config file.
+Run "lettabot onboard" to create a config, or set LETTABOT_CONFIG=/path/to/config.yaml
 `);
     process.exit(1);
   }
