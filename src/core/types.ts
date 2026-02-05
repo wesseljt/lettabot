@@ -43,7 +43,7 @@ export interface TriggerContext {
 // Original Types
 // =============================================================================
 
-export type ChannelId = 'telegram' | 'slack' | 'whatsapp' | 'signal' | 'discord';
+export type ChannelId = 'telegram' | 'slack' | 'whatsapp' | 'signal' | 'discord' | 'mock';
 
 export interface InboundAttachment {
   id?: string;
@@ -149,4 +149,8 @@ export interface AgentStore {
   createdAt?: string;
   lastUsedAt?: string;
   lastMessageTarget?: LastMessageTarget;
+  
+  // Recovery tracking
+  recoveryAttempts?: number; // Count of consecutive recovery attempts
+  lastRecoveryAt?: string;   // When last recovery was attempted
 }

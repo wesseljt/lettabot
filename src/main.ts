@@ -129,7 +129,15 @@ import { agentExists, findAgentByName } from './tools/letta-api.js';
 const configPath = resolveConfigPath();
 const isContainerDeploy = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.FLY_APP_NAME || process.env.DOCKER_DEPLOY);
 if (!existsSync(configPath) && !isContainerDeploy) {
-  console.log(`\n  No config found at ${configPath}. Run "lettabot onboard" first.\n`);
+  console.log(`
+No config file found. Searched locations:
+  1. ./lettabot.yaml (project-local - recommended)
+  2. ./lettabot.yml
+  3. ~/.lettabot/config.yaml (user global)
+  4. ~/.lettabot/config.yml
+
+Run "lettabot onboard" to create a config file.
+`);
   process.exit(1);
 }
 

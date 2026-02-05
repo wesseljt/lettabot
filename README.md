@@ -108,7 +108,7 @@ LettaBot can transcribe voice messages using OpenAI Whisper. Voice messages are 
 
 ### Configuration
 
-Add your OpenAI API key to `lettabot.config.yaml`:
+Add your OpenAI API key to `lettabot.yaml`:
 
 ```yaml
 transcription:

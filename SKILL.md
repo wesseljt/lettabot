@@ -178,7 +178,7 @@ Each channel supports three DM policies:
 
 ## Configuration File
 
-After onboarding, config is saved to `~/.config/lettabot/config.yaml`:
+After onboarding, config is saved to `~/.lettabot/config.yaml`:
 
 ```yaml
 server:
@@ -296,7 +296,7 @@ If an AI agent is helping with setup and WhatsApp is configured:
 
 The agent can verify success by checking:
 - `lettabot server` output shows "Connected to Telegram" (or other channel)
-- Config file exists at `~/.config/lettabot/config.yaml`
+- Config file exists at `~/.lettabot/config.yaml`
 - User can message bot on configured channel(s)
 
 ## Self-Hosted Letta

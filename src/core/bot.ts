@@ -9,7 +9,7 @@ import { mkdirSync } from 'node:fs';
 import type { ChannelAdapter } from '../channels/types.js';
 import type { BotConfig, InboundMessage, TriggerContext } from './types.js';
 import { Store } from './store.js';
-import { updateAgentName } from '../tools/letta-api.js';
+import { updateAgentName, getPendingApprovals, rejectApproval, cancelRuns, disableAllToolApprovals } from '../tools/letta-api.js';
 import { installSkillsToAgent } from '../skills/loader.js';
 import { formatMessageEnvelope } from './formatter.js';
 import { loadMemoryBlocks } from './memory.js';
@@ -115,6 +115,72 @@ export class LettaBot {
   }
   
   /**
+   * Attempt to recover from stuck approval state.
+   * Returns true if recovery was attempted, false if no recovery needed.
+   * @param maxAttempts Maximum recovery attempts before giving up (default: 2)
+   */
+  private async attemptRecovery(maxAttempts = 2): Promise<{ recovered: boolean; shouldReset: boolean }> {
+    if (!this.store.agentId) {
+      return { recovered: false, shouldReset: false };
+    }
+    
+    const attempts = this.store.recoveryAttempts;
+    if (attempts >= maxAttempts) {
+      console.error(`[Bot] Recovery failed after ${attempts} attempts.`);
+      console.error('[Bot] Try running: lettabot reset-conversation');
+      return { recovered: false, shouldReset: true };
+    }
+    
+    console.log('[Bot] Checking for pending approvals...');
+    
+    try {
+      // Check for pending approvals
+      const pendingApprovals = await getPendingApprovals(
+        this.store.agentId,
+        this.store.conversationId || undefined
+      );
+      
+      if (pendingApprovals.length === 0) {
+        // No pending approvals, reset counter and continue
+        this.store.resetRecoveryAttempts();
+        return { recovered: false, shouldReset: false };
+      }
+      
+      console.log(`[Bot] Found ${pendingApprovals.length} pending approval(s), attempting recovery...`);
+      this.store.incrementRecoveryAttempts();
+      
+      // Reject all pending approvals
+      for (const approval of pendingApprovals) {
+        console.log(`[Bot] Rejecting approval for ${approval.toolName} (${approval.toolCallId})`);
+        await rejectApproval(
+          this.store.agentId,
+          { toolCallId: approval.toolCallId, reason: 'Session was interrupted - retrying request' },
+          this.store.conversationId || undefined
+        );
+      }
+      
+      // Cancel any active runs
+      const runIds = [...new Set(pendingApprovals.map(a => a.runId))];
+      if (runIds.length > 0) {
+        console.log(`[Bot] Cancelling ${runIds.length} active run(s)...`);
+        await cancelRuns(this.store.agentId, runIds);
+      }
+      
+      // Disable tool approvals for the future (proactive fix)
+      console.log('[Bot] Disabling tool approval requirements...');
+      await disableAllToolApprovals(this.store.agentId);
+      
+      console.log('[Bot] Recovery completed');
+      return { recovered: true, shouldReset: false };
+      
+    } catch (error) {
+      console.error('[Bot] Recovery failed:', error);
+      this.store.incrementRecoveryAttempts();
+      return { recovered: false, shouldReset: this.store.recoveryAttempts >= maxAttempts };
+    }
+  }
+  
+  /**
    * Queue incoming message for processing (prevents concurrent SDK sessions)
    */
   private async handleMessage(msg: InboundMessage, adapter: ChannelAdapter): Promise<void> {
@@ -180,6 +246,20 @@ export class LettaBot {
     // Start typing indicator
     await adapter.sendTypingIndicator(msg.chatId);
     console.log('[Bot] Typing indicator sent');
+    
+    // Attempt recovery from stuck approval state before starting session
+    const recovery = await this.attemptRecovery();
+    if (recovery.shouldReset) {
+      await adapter.sendMessage({
+        chatId: msg.chatId,
+        text: '(Session recovery failed after multiple attempts. Try: lettabot reset-conversation)',
+        threadId: msg.threadId,
+      });
+      return;
+    }
+    if (recovery.recovered) {
+      console.log('[Bot] Recovered from stuck approval, continuing with message processing');
+    }
     
     // Create or resume session
     let session: Session;
@@ -403,11 +483,11 @@ export class LettaBot {
               console.error(`[Bot] Result error: ${resultMsg.error}`);
             }
             
-            // Check for corrupted conversation (empty result usually means error)
+            // Check for potential stuck state (empty result usually means pending approval or error)
             if (resultMsg.success && resultMsg.result === '' && !response.trim()) {
               console.error('[Bot] Warning: Agent returned empty result with no response.');
-              console.error('[Bot] This often indicates a corrupted conversation.');
-              console.error('[Bot] Try running: lettabot reset-conversation');
+              console.error('[Bot] This may indicate a pending approval or interrupted session.');
+              console.error('[Bot] Recovery will be attempted on the next message.');
             }
             
             // Save agent ID and conversation ID
@@ -467,12 +547,10 @@ export class LettaBot {
           console.error('[Bot] Stream received NO DATA - possible stuck tool approval');
           console.error('[Bot] Conversation:', this.store.conversationId);
           console.error('[Bot] This can happen when a previous session disconnected mid-tool-approval');
-          console.error('[Bot] The CLI should auto-recover, but if this persists:');
-          console.error('[Bot]   1. Run: lettabot reset-conversation');
-          console.error('[Bot]   2. Or try your message again (CLI may auto-recover on retry)');
+          console.error('[Bot] Recovery will be attempted automatically on the next message.');
           await adapter.sendMessage({ 
             chatId: msg.chatId, 
-            text: '(No response - connection issue. Please try sending your message again.)', 
+            text: '(Session interrupted. Please try your message again - recovery in progress.)', 
             threadId: msg.threadId 
           });
         } else {

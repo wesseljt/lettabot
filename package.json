@@ -17,6 +17,7 @@
     "start": "node dist/main.js",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "vitest run e2e/",
     "skills": "tsx src/cli.ts skills",
     "skills:list": "tsx src/cli.ts skills list",
     "skills:status": "tsx src/cli.ts skills status",

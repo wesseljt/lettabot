@@ -118,4 +118,22 @@ export class Store {
     this.data.lastMessageTarget = target || undefined;
     this.save();
   }
+  
+  // Recovery tracking
+  
+  get recoveryAttempts(): number {
+    return this.data.recoveryAttempts || 0;
+  }
+  
+  incrementRecoveryAttempts(): number {
+    this.data.recoveryAttempts = (this.data.recoveryAttempts || 0) + 1;
+    this.data.lastRecoveryAt = new Date().toISOString();
+    this.save();
+    return this.data.recoveryAttempts;
+  }
+  
+  resetRecoveryAttempts(): void {
+    this.data.recoveryAttempts = 0;
+    this.save();
+  }
 }

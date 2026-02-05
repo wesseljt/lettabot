@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  unit:
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +24,30 @@ jobs:
       - name: Build
         run: npm run build
       
-      - name: Run tests
+      - name: Run unit tests
         run: npm run test:run
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    # Only run e2e on main branch (has secrets)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Run e2e tests
+        run: npm run test:e2e
+        env:
+          LETTA_API_KEY: ${{ secrets.LETTA_API_KEY }}
+          LETTA_E2E_AGENT_ID: ${{ secrets.LETTA_E2E_AGENT_ID }}
