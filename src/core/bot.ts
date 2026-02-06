@@ -443,6 +443,15 @@ export class LettaBot {
       
       // Helper to finalize and send current accumulated response
       const finalizeMessage = async () => {
+        // Check for silent marker - agent chose not to reply
+        if (response.trim() === '<no-reply/>') {
+          console.log('[Bot] Agent chose not to reply (no-reply marker)');
+          sentAnyMessage = true;
+          response = '';
+          messageId = null;
+          lastUpdate = Date.now();
+          return;
+        }
         if (response.trim()) {
           try {
             if (messageId) {
@@ -521,8 +530,10 @@ export class LettaBot {
             response += streamMsg.content;
             
             // Stream updates only for channels that support editing (Telegram, Slack)
+            // Hold back streaming edits while response could still become <no-reply/>
             const canEdit = adapter.supportsEditing?.() ?? true;
-            if (canEdit && Date.now() - lastUpdate > 500 && response.length > 0) {
+            const mayBeNoReply = '<no-reply/>'.startsWith(response.trim());
+            if (canEdit && !mayBeNoReply && Date.now() - lastUpdate > 500 && response.length > 0) {
               try {
                 if (messageId) {
                   await adapter.editMessage(msg.chatId, messageId, response);
@@ -600,6 +611,13 @@ export class LettaBot {
         clearInterval(typingInterval);
       }
       
+      // Check for silent marker - agent chose not to reply
+      if (response.trim() === '<no-reply/>') {
+        console.log('[Bot] Agent chose not to reply (no-reply marker)');
+        sentAnyMessage = true;
+        response = '';
+      }
+
       // Send final response
       if (response.trim()) {
         try {
