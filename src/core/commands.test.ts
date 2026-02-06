@@ -66,10 +66,11 @@ describe('COMMANDS', () => {
     expect(COMMANDS).toContain('heartbeat');
     expect(COMMANDS).toContain('help');
     expect(COMMANDS).toContain('start');
+    expect(COMMANDS).toContain('reset');
   });
 
-  it('has exactly 4 commands', () => {
-    expect(COMMANDS).toHaveLength(4);
+  it('has exactly 5 commands', () => {
+    expect(COMMANDS).toHaveLength(5);
   });
 });
 

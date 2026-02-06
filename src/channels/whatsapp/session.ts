@@ -204,7 +204,7 @@ export async function createWaSocket(options: SocketOptions): Promise<SocketResu
     logger: logger as any,
     printQRInTerminal: false,
     // getMessage for retry capability - store is populated when we SEND messages, not here
-    getMessage: async (key) => {
+    getMessage: async (key: { id?: string | null }) => {
       if (!key.id) return undefined;
       return messageStore.get(key.id);
     },
