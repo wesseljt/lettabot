@@ -287,14 +287,23 @@ const config = {
   },
   
   // Polling - system-level background checks
-  polling: {
-    enabled: !!process.env.GMAIL_ACCOUNT, // Enable if any poller is configured
-    intervalMs: parseInt(process.env.POLLING_INTERVAL_MS || '60000', 10), // Default 1 minute
-    gmail: {
-      enabled: !!process.env.GMAIL_ACCOUNT,
-      account: process.env.GMAIL_ACCOUNT || '',
-    },
-  },
+  // Priority: YAML polling section > YAML integrations.google (legacy) > env vars
+  polling: (() => {
+    const gmailAccount = yamlConfig.polling?.gmail?.account
+      || process.env.GMAIL_ACCOUNT || '';
+    const gmailEnabled = yamlConfig.polling?.gmail?.enabled ?? !!gmailAccount;
+    const intervalMs = yamlConfig.polling?.intervalMs
+      ?? parseInt(process.env.POLLING_INTERVAL_MS || '60000', 10);
+    const enabled = yamlConfig.polling?.enabled ?? gmailEnabled;
+    return {
+      enabled,
+      intervalMs,
+      gmail: {
+        enabled: gmailEnabled,
+        account: gmailAccount,
+      },
+    };
+  })(),
 };
 
 // Validate at least one channel is configured

@@ -66,6 +66,14 @@ features:
     enabled: true
     intervalMin: 60
 
+# Polling (background checks for Gmail, etc.)
+polling:
+  enabled: true
+  intervalMs: 60000              # Check every 60 seconds
+  gmail:
+    enabled: true
+    account: user@example.com
+
 # Voice transcription
 transcription:
   provider: openai
@@ -181,6 +189,47 @@ features:
 
 Enable scheduled tasks. See [Cron Setup](./cron-setup.md).
 
+## Polling Configuration
+
+Background polling for integrations like Gmail. Runs independently of agent cron jobs.
+
+```yaml
+polling:
+  enabled: true                # Master switch (default: auto-detected from sub-configs)
+  intervalMs: 60000            # Check every 60 seconds (default: 60000)
+  gmail:
+    enabled: true
+    account: user@example.com  # Gmail account to poll
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `polling.enabled` | boolean | auto | Master switch. Defaults to `true` if any sub-config is enabled |
+| `polling.intervalMs` | number | `60000` | Polling interval in milliseconds |
+| `polling.gmail.enabled` | boolean | auto | Enable Gmail polling. Auto-detected from `account` |
+| `polling.gmail.account` | string | - | Gmail account to poll for unread messages |
+
+### Legacy config path
+
+For backward compatibility, Gmail polling can also be configured under `integrations.google`:
+
+```yaml
+integrations:
+  google:
+    enabled: true
+    account: user@example.com
+    pollIntervalSec: 60
+```
+
+The top-level `polling` section takes priority if both are present.
+
+### Environment variable fallback
+
+| Env Variable | Polling Config Equivalent |
+|--------------|--------------------------|
+| `GMAIL_ACCOUNT` | `polling.gmail.account` |
+| `POLLING_INTERVAL_MS` | `polling.intervalMs` |
+
 ## Transcription Configuration
 
 Voice message transcription via OpenAI Whisper:
@@ -223,5 +272,7 @@ Environment variables override config file values:
 | `WHATSAPP_SELF_CHAT_MODE` | `channels.whatsapp.selfChat` |
 | `SIGNAL_PHONE_NUMBER` | `channels.signal.phone` |
 | `OPENAI_API_KEY` | `transcription.apiKey` |
+| `GMAIL_ACCOUNT` | `polling.gmail.account` |
+| `POLLING_INTERVAL_MS` | `polling.intervalMs` |
 
 See [SKILL.md](../SKILL.md) for complete environment variable reference.

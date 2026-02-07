@@ -169,11 +169,19 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
     env.MAX_TOOL_CALLS = String(config.features.maxToolCalls);
   }
   
-  // Integrations - Google (Gmail polling)
-  if (config.integrations?.google?.enabled && config.integrations.google.account) {
+  // Polling - top-level polling config (preferred)
+  if (config.polling?.gmail?.enabled && config.polling.gmail.account) {
+    env.GMAIL_ACCOUNT = config.polling.gmail.account;
+  }
+  if (config.polling?.intervalMs) {
+    env.POLLING_INTERVAL_MS = String(config.polling.intervalMs);
+  }
+
+  // Integrations - Google (legacy path for Gmail polling, lower priority)
+  if (!env.GMAIL_ACCOUNT && config.integrations?.google?.enabled && config.integrations.google.account) {
     env.GMAIL_ACCOUNT = config.integrations.google.account;
   }
-  if (config.integrations?.google?.pollIntervalSec) {
+  if (!env.POLLING_INTERVAL_MS && config.integrations?.google?.pollIntervalSec) {
     env.POLLING_INTERVAL_MS = String(config.integrations.google.pollIntervalSec * 1000);
   }
 
