@@ -457,7 +457,6 @@ const globalConfig = {
   cronEnabled: process.env.CRON_ENABLED === 'true',  // Legacy env var fallback
 };
 
-
 // Validate LETTA_API_KEY is set for cloud mode (selfhosted mode doesn't require it)
 if (yamlConfig.server.mode !== 'selfhosted' && !process.env.LETTA_API_KEY) {
   console.error('\n  Error: LETTA_API_KEY is required for Letta Cloud.');
