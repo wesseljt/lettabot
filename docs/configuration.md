@@ -236,6 +236,27 @@ All channels share these common options:
 | `enabled` | boolean | Enable this channel |
 | `dmPolicy` | `'pairing'` \| `'allowlist'` \| `'open'` | Access control mode |
 | `allowedUsers` | string[] | User IDs/numbers for allowlist mode |
+| `groupDebounceSec` | number | Debounce for group messages in seconds (default: 5, 0 = immediate) |
+| `instantGroups` | string[] | Group/channel IDs that bypass debounce entirely |
+
+### Group Message Debouncing
+
+In group chats, the bot debounces incoming messages to batch rapid-fire messages into a single response. The timer resets on each new message, so the bot waits for a quiet period before responding.
+
+```yaml
+channels:
+  discord:
+    groupDebounceSec: 10   # Wait 10s of quiet before responding
+    instantGroups:         # These groups get instant responses
+      - "123456789"
+```
+
+- **Default: 5 seconds** -- waits for 5s of quiet, then processes all buffered messages at once
+- **`groupDebounceSec: 0`** -- disables batching (every message processed immediately, like DMs)
+- **`@mention`** -- always triggers an immediate response regardless of debounce
+- **`instantGroups`** -- listed groups bypass debounce entirely
+
+The deprecated `groupPollIntervalMin` (minutes) still works for backward compatibility but `groupDebounceSec` takes priority.
 
 ### DM Policies
 
