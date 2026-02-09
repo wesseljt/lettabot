@@ -169,36 +169,39 @@ export class LettaBot implements AgentSession {
       return resumeSession(this.store.agentId, opts);
     }
 
-    // Create new agent
+    // Create new agent -- persist immediately so we don't orphan it on later failures
     console.log('[Bot] Creating new agent');
     const newAgentId = await createAgent({
       systemPrompt: SYSTEM_PROMPT,
       memory: loadMemoryBlocks(this.config.agentName),
     });
+    const currentBaseUrl = process.env.LETTA_BASE_URL || 'https://api.letta.com';
+    this.store.setAgent(newAgentId, currentBaseUrl);
+    console.log('[Bot] Saved new agent ID:', newAgentId);
+
+    // First-run setup: name and skills
+    if (this.config.agentName) {
+      updateAgentName(newAgentId, this.config.agentName).catch(() => {});
+    }
+    installSkillsToAgent(newAgentId, this.config.skills);
+
     return createSession(newAgentId, opts);
   }
 
   /**
-   * Persist agent/conversation IDs after a successful session.
-   * Also handles first-run setup (agent name, skills).
+   * Persist conversation ID after a successful session result.
+   * Agent ID and first-run setup are handled eagerly in getSession().
    */
   private persistSessionState(session: Session): void {
+    // Agent ID already persisted in getSession() on creation.
+    // Here we only update if the server returned a different one (shouldn't happen).
     if (session.agentId && session.agentId !== this.store.agentId) {
-      const isNewAgent = !this.store.agentId;
       const currentBaseUrl = process.env.LETTA_BASE_URL || 'https://api.letta.com';
       this.store.setAgent(session.agentId, currentBaseUrl, session.conversationId || undefined);
-      console.log('Saved agent ID:', session.agentId, 'conversation ID:', session.conversationId, 'on server:', currentBaseUrl);
-      
-      if (isNewAgent) {
-        if (this.config.agentName && session.agentId) {
-          updateAgentName(session.agentId, this.config.agentName).catch(() => {});
-        }
-        if (session.agentId) {
-          installSkillsToAgent(session.agentId, this.config.skills);
-        }
-      }
+      console.log('[Bot] Agent ID updated:', session.agentId);
     } else if (session.conversationId && session.conversationId !== this.store.conversationId) {
       this.store.conversationId = session.conversationId;
+      console.log('[Bot] Conversation ID updated:', session.conversationId);
     }
   }
 
