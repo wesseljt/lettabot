@@ -24,7 +24,8 @@ server:
   mode: cloud                    # 'cloud' or 'selfhosted'
   apiKey: letta_...              # Required for cloud mode
 
-# Agent settings
+# Agent settings (single agent mode)
+# For multiple agents, use `agents:` array instead -- see Multi-Agent section
 agent:
   name: LettaBot
   model: claude-sonnet-4
@@ -116,13 +117,115 @@ docker run -v ~/.letta/.persist/pgdata:/var/lib/postgresql/data \
   letta/letta:latest
 ```
 
-## Agent Configuration
+## Agent Configuration (Single Agent)
+
+The default config uses `agent:` and `channels:` at the top level for a single agent:
 
 | Option | Type | Description |
 |--------|------|-------------|
 | `agent.id` | string | Use existing agent (skips creation) |
 | `agent.name` | string | Name for new agent |
 | `agent.model` | string | Model ID (e.g., `claude-sonnet-4`) |
+
+For multiple agents, see [Multi-Agent Configuration](#multi-agent-configuration) below.
+
+## Multi-Agent Configuration
+
+Run multiple independent agents from a single LettaBot instance. Each agent gets its own channels, state, cron, heartbeat, and polling services.
+
+Use the `agents:` array instead of the top-level `agent:` and `channels:` keys:
+
+```yaml
+server:
+  mode: cloud
+  apiKey: letta_...
+
+agents:
+  - name: work-assistant
+    model: claude-sonnet-4
+    # id: agent-abc123           # Optional: use existing agent
+    channels:
+      telegram:
+        token: ${WORK_TELEGRAM_TOKEN}
+        dmPolicy: pairing
+      slack:
+        botToken: ${SLACK_BOT_TOKEN}
+        appToken: ${SLACK_APP_TOKEN}
+    features:
+      cron: true
+      heartbeat:
+        enabled: true
+        intervalMin: 30
+
+  - name: personal-assistant
+    model: claude-sonnet-4
+    channels:
+      signal:
+        phone: "+1234567890"
+        selfChat: true
+      whatsapp:
+        enabled: true
+        selfChat: true
+    features:
+      heartbeat:
+        enabled: true
+        intervalMin: 60
+```
+
+### Per-Agent Options
+
+Each entry in `agents:` accepts:
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `name` | string | Yes | Agent name (used for display, creation, and state isolation) |
+| `id` | string | No | Use existing agent ID (skips creation) |
+| `model` | string | No | Model for agent creation |
+| `channels` | object | Yes | Channel configs (same schema as top-level `channels:`) |
+| `features` | object | No | Per-agent features (cron, heartbeat, maxToolCalls) |
+| `polling` | object | No | Per-agent polling config (Gmail, etc.) |
+| `integrations` | object | No | Per-agent integrations (Google, etc.) |
+
+### How it works
+
+- Each agent is a separate Letta agent with its own conversation history and memory
+- Agents are fully isolated -- separate state, separate channels, separate services
+- The `LettaGateway` orchestrates startup, shutdown, and message delivery across agents
+- Legacy single-agent configs (`agent:` + `channels:`) continue to work unchanged
+
+### Migrating from single to multi-agent
+
+Your existing config:
+
+```yaml
+agent:
+  name: MyBot
+channels:
+  telegram:
+    token: "..."
+features:
+  cron: true
+```
+
+Becomes:
+
+```yaml
+agents:
+  - name: MyBot
+    channels:
+      telegram:
+        token: "..."
+    features:
+      cron: true
+```
+
+The `server:`, `transcription:`, `attachments:`, and `api:` sections remain at the top level (shared across all agents).
+
+### Known limitations
+
+- Two agents cannot share the same channel type without ambiguous API routing ([#219](https://github.com/letta-ai/lettabot/issues/219))
+- WhatsApp/Signal session paths are not yet agent-scoped ([#220](https://github.com/letta-ai/lettabot/issues/220))
+- Heartbeat prompt and target are not yet configurable per-agent ([#221](https://github.com/letta-ai/lettabot/issues/221))
 
 ## Channel Configuration
 
