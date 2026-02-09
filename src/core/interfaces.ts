@@ -54,3 +54,15 @@ export interface AgentSession {
   /** Callback to trigger heartbeat */
   onTriggerHeartbeat?: () => Promise<void>;
 }
+
+/**
+ * Minimal interface for message delivery.
+ * Satisfied by both AgentSession and LettaGateway.
+ */
+export interface MessageDeliverer {
+  deliverToChannel(channelId: string, chatId: string, options: {
+    text?: string;
+    filePath?: string;
+    kind?: 'image' | 'file';
+  }): Promise<string | undefined>;
+}

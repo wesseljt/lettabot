@@ -7,9 +7,9 @@
  * See: docs/multi-agent-architecture.md
  */
 
-import type { AgentSession } from './interfaces.js';
+import type { AgentSession, MessageDeliverer } from './interfaces.js';
 
-export class LettaGateway {
+export class LettaGateway implements MessageDeliverer {
   private agents: Map<string, AgentSession> = new Map();
 
   /**
