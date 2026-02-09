@@ -225,7 +225,8 @@ export function normalizeAgents(config: LettaBotConfig): AgentConfig[] {
     if (channels.slack?.enabled !== false && channels.slack?.botToken && channels.slack?.appToken) {
       normalized.slack = channels.slack;
     }
-    if (channels.whatsapp?.enabled !== false && channels.whatsapp?.enabled) {
+    // WhatsApp has no credential to check (uses QR pairing), so just check enabled
+    if (channels.whatsapp?.enabled) {
       normalized.whatsapp = channels.whatsapp;
     }
     if (channels.signal?.enabled !== false && channels.signal?.phone) {
