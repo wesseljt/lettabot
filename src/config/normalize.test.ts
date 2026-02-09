@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { normalizeAgents, type LettaBotConfig, type AgentConfig } from './types.js';
 
 describe('normalizeAgents', () => {
@@ -154,6 +154,105 @@ describe('normalizeAgents', () => {
     const agents = normalizeAgents(config);
 
     expect(agents[0].id).toBe('agent-123');
+  });
+
+  describe('env var fallback (container deploys)', () => {
+    const envVars = [
+      'TELEGRAM_BOT_TOKEN', 'TELEGRAM_DM_POLICY',
+      'SLACK_BOT_TOKEN', 'SLACK_APP_TOKEN', 'SLACK_DM_POLICY',
+      'WHATSAPP_ENABLED', 'WHATSAPP_SELF_CHAT_MODE', 'WHATSAPP_DM_POLICY',
+      'SIGNAL_PHONE_NUMBER', 'SIGNAL_SELF_CHAT_MODE', 'SIGNAL_DM_POLICY',
+      'DISCORD_BOT_TOKEN', 'DISCORD_DM_POLICY',
+    ];
+    const savedEnv: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      for (const key of envVars) {
+        savedEnv[key] = process.env[key];
+        delete process.env[key];
+      }
+    });
+
+    afterEach(() => {
+      for (const key of envVars) {
+        if (savedEnv[key] !== undefined) {
+          process.env[key] = savedEnv[key];
+        } else {
+          delete process.env[key];
+        }
+      }
+    });
+
+    it('should pick up channels from env vars when YAML has none', () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'env-telegram-token';
+      process.env.DISCORD_BOT_TOKEN = 'env-discord-token';
+
+      const config: LettaBotConfig = {
+        server: { mode: 'cloud' },
+        agent: { name: 'TestBot', model: 'test' },
+        channels: {},
+      };
+
+      const agents = normalizeAgents(config);
+
+      expect(agents[0].channels.telegram?.token).toBe('env-telegram-token');
+      expect(agents[0].channels.discord?.token).toBe('env-discord-token');
+    });
+
+    it('should not override YAML channels with env vars', () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'env-token';
+
+      const config: LettaBotConfig = {
+        server: { mode: 'cloud' },
+        agent: { name: 'TestBot', model: 'test' },
+        channels: {
+          telegram: { enabled: true, token: 'yaml-token' },
+        },
+      };
+
+      const agents = normalizeAgents(config);
+
+      expect(agents[0].channels.telegram?.token).toBe('yaml-token');
+    });
+
+    it('should not apply env vars in multi-agent mode', () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'env-token';
+
+      const config: LettaBotConfig = {
+        server: { mode: 'cloud' },
+        agents: [{ name: 'Bot1', channels: {} }],
+        agent: { name: 'Unused', model: 'unused' },
+        channels: {},
+      };
+
+      const agents = normalizeAgents(config);
+
+      expect(agents[0].channels.telegram).toBeUndefined();
+    });
+
+    it('should pick up all channel types from env vars', () => {
+      process.env.TELEGRAM_BOT_TOKEN = 'tg-token';
+      process.env.SLACK_BOT_TOKEN = 'slack-bot';
+      process.env.SLACK_APP_TOKEN = 'slack-app';
+      process.env.WHATSAPP_ENABLED = 'true';
+      process.env.SIGNAL_PHONE_NUMBER = '+1234567890';
+      process.env.DISCORD_BOT_TOKEN = 'discord-token';
+
+      const config: LettaBotConfig = {
+        server: { mode: 'cloud' },
+        agent: { name: 'TestBot', model: 'test' },
+        channels: {},
+      };
+
+      const agents = normalizeAgents(config);
+
+      expect(agents[0].channels.telegram?.token).toBe('tg-token');
+      expect(agents[0].channels.slack?.botToken).toBe('slack-bot');
+      expect(agents[0].channels.slack?.appToken).toBe('slack-app');
+      expect(agents[0].channels.whatsapp?.enabled).toBe(true);
+      expect(agents[0].channels.signal?.phone).toBe('+1234567890');
+      expect(agents[0].channels.discord?.token).toBe('discord-token');
+    });
   });
 
   it('should preserve features, polling, and integrations', () => {

@@ -256,6 +256,45 @@ export function normalizeAgents(config: LettaBotConfig): AgentConfig[] {
   // Filter out disabled/misconfigured channels
   const channels = normalizeChannels(config.channels);
 
+  // Env var fallback for container deploys without lettabot.yaml (e.g. Railway)
+  if (!channels.telegram && process.env.TELEGRAM_BOT_TOKEN) {
+    channels.telegram = {
+      enabled: true,
+      token: process.env.TELEGRAM_BOT_TOKEN,
+      dmPolicy: (process.env.TELEGRAM_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+    };
+  }
+  if (!channels.slack && process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
+    channels.slack = {
+      enabled: true,
+      botToken: process.env.SLACK_BOT_TOKEN,
+      appToken: process.env.SLACK_APP_TOKEN,
+      dmPolicy: (process.env.SLACK_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+    };
+  }
+  if (!channels.whatsapp && process.env.WHATSAPP_ENABLED === 'true') {
+    channels.whatsapp = {
+      enabled: true,
+      selfChat: process.env.WHATSAPP_SELF_CHAT_MODE !== 'false',
+      dmPolicy: (process.env.WHATSAPP_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+    };
+  }
+  if (!channels.signal && process.env.SIGNAL_PHONE_NUMBER) {
+    channels.signal = {
+      enabled: true,
+      phone: process.env.SIGNAL_PHONE_NUMBER,
+      selfChat: process.env.SIGNAL_SELF_CHAT_MODE !== 'false',
+      dmPolicy: (process.env.SIGNAL_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+    };
+  }
+  if (!channels.discord && process.env.DISCORD_BOT_TOKEN) {
+    channels.discord = {
+      enabled: true,
+      token: process.env.DISCORD_BOT_TOKEN,
+      dmPolicy: (process.env.DISCORD_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+    };
+  }
+
   return [{
     name: agentName,
     id,
