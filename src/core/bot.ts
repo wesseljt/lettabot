@@ -258,6 +258,14 @@ export class LettaBot implements AgentSession {
       }
     }
 
+    // Persist conversation ID immediately after successful send, before streaming.
+    // If streaming disconnects/aborts before result, the next turn will still
+    // resume the correct conversation instead of forking a new one.
+    if (session.conversationId && session.conversationId !== this.store.conversationId) {
+      this.store.conversationId = session.conversationId;
+      console.log('[Bot] Saved conversation ID:', session.conversationId);
+    }
+
     // Return session and a deduplicated stream generator
     const seenToolCallIds = new Set<string>();
     const self = this;
