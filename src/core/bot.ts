@@ -151,11 +151,20 @@ export class LettaBot implements AgentSession {
   // =========================================================================
 
   private get baseSessionOptions() {
+    const disallowedTools = this.config.disallowedTools || [];
+
     return {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
+      disallowedTools,
       cwd: this.config.workingDir,
       canUseTool: (toolName: string, _toolInput: Record<string, unknown>) => {
+        if (disallowedTools.includes(toolName)) {
+          return {
+            behavior: 'deny' as const,
+            message: `Tool '${toolName}' is blocked by bot configuration`,
+          };
+        }
         console.log(`[Bot] Tool approval requested: ${toolName} (should be auto-approved by bypassPermissions)`);
         return { behavior: 'allow' as const };
       },

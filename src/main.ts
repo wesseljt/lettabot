@@ -397,10 +397,22 @@ function createGroupBatcher(
 
 // Skills are installed to agent-scoped directory when agent is created (see core/bot.ts)
 
+function parseCsvList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 // Global config (shared across all agents)
 const globalConfig = {
   workingDir: getWorkingDir(),
-  allowedTools: (process.env.ALLOWED_TOOLS || 'Bash,Read,Edit,Write,Glob,Grep,Task,web_search,conversation_search').split(','),
+  allowedTools: parseCsvList(
+    process.env.ALLOWED_TOOLS || 'Bash,Read,Edit,Write,Glob,Grep,Task,web_search,conversation_search',
+  ),
+  disallowedTools: parseCsvList(
+    process.env.DISALLOWED_TOOLS || 'EnterPlanMode,ExitPlanMode',
+  ),
   attachmentsMaxBytes: resolveAttachmentsMaxBytes(),
   attachmentsMaxAgeDays: resolveAttachmentsMaxAgeDays(),
   cronEnabled: process.env.CRON_ENABLED === 'true',  // Legacy env var fallback
@@ -472,6 +484,7 @@ async function main() {
       workingDir: globalConfig.workingDir,
       agentName: agentConfig.name,
       allowedTools: globalConfig.allowedTools,
+      disallowedTools: globalConfig.disallowedTools,
       displayName: agentConfig.displayName,
       maxToolCalls: agentConfig.features?.maxToolCalls,
       skills: {
