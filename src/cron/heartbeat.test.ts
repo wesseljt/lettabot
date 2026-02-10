@@ -47,6 +47,7 @@ function createMockBot(): AgentSession {
     start: vi.fn(),
     stop: vi.fn(),
     sendToAgent: vi.fn().mockResolvedValue('ok'),
+    streamToAgent: vi.fn().mockReturnValue((async function* () { yield { type: 'result', success: true }; })()),
     deliverToChannel: vi.fn(),
     getStatus: vi.fn().mockReturnValue({ agentId: 'test', channels: [] }),
     setAgentId: vi.fn(),

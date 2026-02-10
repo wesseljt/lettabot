@@ -166,18 +166,44 @@ export function createApiServer(deliverer: AgentRouter, options: ServerOptions):
 
         console.log(`[API] Chat request for agent "${resolvedName}": ${chatReq.message.slice(0, 100)}...`);
 
-        const response = await deliverer.sendToAgent(agentName, chatReq.message, {
-          type: 'webhook',
-          outputMode: 'silent',
-        });
+        const context = { type: 'webhook' as const, outputMode: 'silent' as const };
+        const wantsStream = (req.headers.accept || '').includes('text/event-stream');
 
-        const chatRes: ChatResponse = {
-          success: true,
-          response,
-          agentName: resolvedName,
-        };
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(chatRes));
+        if (wantsStream) {
+          // SSE streaming: forward SDK stream chunks as events
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          });
+
+          let clientDisconnected = false;
+          req.on('close', () => { clientDisconnected = true; });
+
+          try {
+            for await (const msg of deliverer.streamToAgent(agentName, chatReq.message, context)) {
+              if (clientDisconnected) break;
+              res.write(`data: ${JSON.stringify(msg)}\n\n`);
+              if (msg.type === 'result') break;
+            }
+          } catch (streamError: any) {
+            if (!clientDisconnected) {
+              res.write(`data: ${JSON.stringify({ type: 'error', error: streamError.message })}\n\n`);
+            }
+          }
+          res.end();
+        } else {
+          // Sync: wait for full response
+          const response = await deliverer.sendToAgent(agentName, chatReq.message, context);
+
+          const chatRes: ChatResponse = {
+            success: true,
+            response,
+            agentName: resolvedName,
+          };
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(chatRes));
+        }
       } catch (error: any) {
         console.error('[API] Chat error:', error);
         const chatRes: ChatResponse = {

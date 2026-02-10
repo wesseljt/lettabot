@@ -98,7 +98,7 @@ async function buildMultimodalMessage(
 // ---------------------------------------------------------------------------
 // Stream message type with toolCallId/uuid for dedup
 // ---------------------------------------------------------------------------
-interface StreamMsg {
+export interface StreamMsg {
   type: string;
   content?: string;
   toolCallId?: string;
@@ -836,6 +836,35 @@ export class LettaBot implements AgentSession {
           if (msg.type === 'result') break;
         }
         return response;
+      } finally {
+        session.close();
+      }
+    } finally {
+      this.processing = false;
+      this.processQueue();
+    }
+  }
+
+  /**
+   * Stream a message to the agent, yielding chunks as they arrive.
+   * Same lifecycle as sendToAgent() but yields StreamMsg instead of accumulating.
+   */
+  async *streamToAgent(
+    text: string,
+    _context?: TriggerContext
+  ): AsyncGenerator<StreamMsg> {
+    // Serialize with message queue to prevent 409 conflicts
+    while (this.processing) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    this.processing = true;
+
+    try {
+      const { session, stream } = await this.runSession(text);
+
+      try {
+        yield* stream();
       } finally {
         session.close();
       }

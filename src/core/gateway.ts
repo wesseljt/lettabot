@@ -9,6 +9,7 @@
 
 import type { AgentSession, AgentRouter } from './interfaces.js';
 import type { TriggerContext } from './types.js';
+import type { StreamMsg } from './bot.js';
 
 export class LettaGateway implements AgentRouter {
   private agents: Map<string, AgentSession> = new Map();
@@ -79,6 +80,14 @@ export class LettaGateway implements AgentRouter {
   async sendToAgent(agentName: string | undefined, text: string, context?: TriggerContext): Promise<string> {
     const agent = this.resolveAgent(agentName);
     return agent.sendToAgent(text, context);
+  }
+
+  /**
+   * Stream a message to a named agent, yielding chunks as they arrive.
+   */
+  async *streamToAgent(agentName: string | undefined, text: string, context?: TriggerContext): AsyncGenerator<StreamMsg> {
+    const agent = this.resolveAgent(agentName);
+    yield* agent.streamToAgent(text, context);
   }
 
   /**
