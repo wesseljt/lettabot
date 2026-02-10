@@ -444,7 +444,7 @@ Attachments are stored in `/tmp/lettabot/attachments/`.
 
 ## API Server Configuration
 
-The built-in API server provides health checks and CLI messaging endpoints.
+The built-in API server provides health checks, CLI messaging, and a chat endpoint for programmatic agent access.
 
 ```yaml
 api:
@@ -458,6 +458,74 @@ api:
 | `api.port` | number | `8080` | Port for the API/health server |
 | `api.host` | string | `127.0.0.1` | Bind address. Use `0.0.0.0` for Docker/Railway |
 | `api.corsOrigin` | string | _(none)_ | CORS origin header for cross-origin access |
+
+### Chat Endpoint
+
+Send messages to a lettabot agent and get responses via HTTP. Useful for integrating
+with other services, server-side tools, webhooks, or custom frontends.
+
+**Synchronous** (default):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: YOUR_API_KEY" \
+  -d '{"message": "What is on my todo list?"}'
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "response": "Here are your current tasks...",
+  "agentName": "LettaBot"
+}
+```
+
+**Streaming** (SSE):
+
+```bash
+curl -N -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -H "Accept: text/event-stream" \
+  -H "X-Api-Key: YOUR_API_KEY" \
+  -d '{"message": "What is on my todo list?"}'
+```
+
+Each SSE event is a JSON object with a `type` field:
+
+| Event type | Description |
+|------------|-------------|
+| `reasoning` | Model thinking/reasoning tokens |
+| `assistant` | Response text (may arrive in multiple chunks) |
+| `tool_call` | Agent is calling a tool (`toolName`, `toolCallId`) |
+| `tool_result` | Tool execution result (`content`, `isError`) |
+| `result` | End of stream (`success`, optional `error`) |
+
+Example stream:
+
+```
+data: {"type":"reasoning","content":"Let me check..."}
+
+data: {"type":"assistant","content":"Here are your "}
+
+data: {"type":"assistant","content":"current tasks."}
+
+data: {"type":"result","success":true}
+
+```
+
+**Request fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | The message to send to the agent |
+| `agent` | string | No | Agent name (defaults to first configured agent) |
+
+**Authentication:** All requests require the `X-Api-Key` header. The API key is auto-generated on first run and saved to `lettabot-api.json`, or set via `LETTABOT_API_KEY` env var.
+
+**Multi-agent:** In multi-agent configs, use the `agent` field to target a specific agent by name. Omit it to use the first agent. A 404 is returned if the agent name doesn't match any configured agent.
 
 ## Environment Variables
 

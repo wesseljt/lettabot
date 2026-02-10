@@ -90,4 +90,65 @@ describe('LettaGateway', () => {
     await gateway.start();
     expect(good.start).toHaveBeenCalled();
   });
+
+  describe('sendToAgent', () => {
+    it('routes by agent name', async () => {
+      const s1 = createMockSession();
+      const s2 = createMockSession();
+      gateway.addAgent('alpha', s1);
+      gateway.addAgent('beta', s2);
+
+      await gateway.sendToAgent('beta', 'hello', { type: 'webhook', outputMode: 'silent' });
+      expect(s2.sendToAgent).toHaveBeenCalledWith('hello', { type: 'webhook', outputMode: 'silent' });
+      expect(s1.sendToAgent).not.toHaveBeenCalled();
+    });
+
+    it('defaults to first agent when name is undefined', async () => {
+      const s1 = createMockSession();
+      gateway.addAgent('only', s1);
+
+      await gateway.sendToAgent(undefined, 'hi');
+      expect(s1.sendToAgent).toHaveBeenCalledWith('hi', undefined);
+    });
+
+    it('throws when agent name not found', async () => {
+      gateway.addAgent('a', createMockSession());
+      await expect(gateway.sendToAgent('nope', 'hi')).rejects.toThrow('Agent not found: nope');
+    });
+
+    it('throws when no agents configured', async () => {
+      await expect(gateway.sendToAgent(undefined, 'hi')).rejects.toThrow('No agents configured');
+    });
+  });
+
+  describe('streamToAgent', () => {
+    it('routes by agent name and yields stream chunks', async () => {
+      const chunks = [
+        { type: 'assistant', content: 'hello' },
+        { type: 'result', success: true },
+      ];
+      const s1 = createMockSession();
+      (s1.streamToAgent as any) = async function* () { for (const c of chunks) yield c; };
+      gateway.addAgent('bot', s1);
+
+      const collected = [];
+      for await (const msg of gateway.streamToAgent('bot', 'test')) {
+        collected.push(msg);
+      }
+      expect(collected).toEqual(chunks);
+    });
+
+    it('defaults to first agent when name is undefined', async () => {
+      const s1 = createMockSession();
+      (s1.streamToAgent as any) = async function* () { yield { type: 'result', success: true }; };
+      gateway.addAgent('default', s1);
+
+      const collected = [];
+      for await (const msg of gateway.streamToAgent(undefined, 'test')) {
+        collected.push(msg);
+      }
+      expect(collected).toHaveLength(1);
+      expect(collected[0].type).toBe('result');
+    });
+  });
 });

@@ -9,6 +9,7 @@ LettaBot is a multi-channel AI assistant powered by [Letta](https://letta.com) t
 - [Configuration Reference](./configuration.md) - All config options
 - [Commands Reference](./commands.md) - Bot commands reference
 - [CLI Tools](./cli-tools.md) - Agent/operator CLI tools
+- [Chat API](./configuration.md#chat-endpoint) - HTTP endpoint for programmatic agent access
 - [Scheduling Tasks](./cron-setup.md) - Cron jobs and heartbeats
 - [Gmail Pub/Sub](./gmail-pubsub.md) - Email notifications integration
 - [Railway Deployment](./railway-deploy.md) - Deploy to Railway
