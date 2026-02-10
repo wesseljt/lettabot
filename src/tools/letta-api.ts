@@ -649,17 +649,19 @@ export async function recoverOrphanedConversationApproval(
           });
           
           // Cancel active stuck runs after rejecting their approvals
+          let cancelled = false;
           if (isStuckApproval) {
-            try {
-              await cancelRuns(agentId, [runId]);
+            cancelled = await cancelRuns(agentId, [runId]);
+            if (cancelled) {
               console.log(`[Letta API] Cancelled stuck run ${runId}`);
-            } catch (cancelErr) {
-              console.warn(`[Letta API] Failed to cancel stuck run ${runId}:`, cancelErr);
+            } else {
+              console.warn(`[Letta API] Failed to cancel stuck run ${runId}`);
             }
           }
           
           recoveredCount += approvals.length;
-          details.push(`Denied ${approvals.length} approval(s) from ${status} run ${runId}${isStuckApproval ? ' (cancelled)' : ''}`);
+          const suffix = isStuckApproval ? (cancelled ? ' (cancelled)' : ' (cancel failed)') : '';
+          details.push(`Denied ${approvals.length} approval(s) from ${status} run ${runId}${suffix}`);
         } else {
           details.push(`Run ${runId} is ${status}/${stopReason} - not orphaned`);
         }
