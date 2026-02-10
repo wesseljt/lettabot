@@ -52,6 +52,11 @@ async function sendSlack(chatId: string, text: string): Promise<void> {
   if (!token) {
     throw new Error('SLACK_BOT_TOKEN not set');
   }
+
+  // Slack uses mrkdwn, which differs slightly from standard Markdown.
+  // Convert for correct formatting (bold, italics, links, code fences, etc.).
+  const { markdownToSlackMrkdwn } = await import('../channels/slack-format.js');
+  const formatted = await markdownToSlackMrkdwn(text);
   
   const response = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
@@ -61,7 +66,7 @@ async function sendSlack(chatId: string, text: string): Promise<void> {
     },
     body: JSON.stringify({
       channel: chatId,
-      text: text,
+      text: formatted,
     }),
   });
   
