@@ -423,7 +423,8 @@ export function normalizeAgents(config: LettaBotConfig): AgentConfig[] {
   }
 
   // Legacy single-agent mode: normalize to agents[]
-  const agentName = config.agent?.name || 'LettaBot';
+  const envAgentName = process.env.LETTA_AGENT_NAME || process.env.AGENT_NAME;
+  const agentName = envAgentName || config.agent?.name || 'LettaBot';
   const model = config.agent?.model;
   const id = config.agent?.id;
 

@@ -570,6 +570,7 @@ Environment variables override config file values:
 | `LETTA_BASE_URL` | `server.baseUrl` |
 | `LETTA_AGENT_ID` | `agent.id` |
 | `LETTA_AGENT_NAME` | `agent.name` |
+| `AGENT_NAME` | `agent.name` (legacy alias) |
 | `TELEGRAM_BOT_TOKEN` | `channels.telegram.token` |
 | `TELEGRAM_DM_POLICY` | `channels.telegram.dmPolicy` |
 | `SLACK_BOT_TOKEN` | `channels.slack.botToken` |
