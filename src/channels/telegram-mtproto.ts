@@ -425,49 +425,62 @@ Reply **approve** or **deny** to this message.`;
 
     if (access === 'pairing') {
       // Create pairing request
-      const request = await upsertPairingRequest('telegram-mtproto', String(userId));
-      if (request) {
-        // Send simple acknowledgment to user (no implementation details)
-        await this.sendMessage({ chatId: String(chatId), text: this.formatUserPairingMessage() });
+      const { code, created } = await upsertPairingRequest('telegram-mtproto', String(userId));
 
-        // Send admin notification if admin chat is configured
-        if (this.config.adminChatId) {
-          const userInfo = await this.getUserInfo(userId);
-          const adminMsg = this.formatAdminPairingNotification(
-            userInfo.username || userInfo.firstName || '',
-            String(userId),
-            request.code,
-            text
-          );
-          try {
-            const result = await this.sendMessage({ chatId: String(this.config.adminChatId), text: adminMsg });
+      // Pairing queue is full: notify user and stop
+      if (!code) {
+        await this.sendMessage({
+          chatId: String(chatId),
+          text: 'Too many pending pairing requests. Please try again later.',
+        });
+        return;
+      }
 
-            // Track this notification for reply-based approval
-            this.pendingPairingApprovals.set(Number(result.messageId), {
-              code: request.code,
-              userId: String(userId),
-              username: userInfo.username || userInfo.firstName || String(userId),
-            });
+      // Existing pending request: don't send duplicate notifications
+      if (!created) {
+        return;
+      }
 
-            // Clean up old entries (keep last 100)
-            if (this.pendingPairingApprovals.size > 100) {
-              const oldest = this.pendingPairingApprovals.keys().next().value;
-              if (oldest !== undefined) {
-                this.pendingPairingApprovals.delete(oldest);
-              }
+      // Send simple acknowledgment to user (no implementation details)
+      await this.sendMessage({ chatId: String(chatId), text: this.formatUserPairingMessage() });
+
+      // Send admin notification if admin chat is configured
+      if (this.config.adminChatId) {
+        const userInfo = await this.getUserInfo(userId);
+        const adminMsg = this.formatAdminPairingNotification(
+          userInfo.username || userInfo.firstName || '',
+          String(userId),
+          code,
+          text
+        );
+        try {
+          const result = await this.sendMessage({ chatId: String(this.config.adminChatId), text: adminMsg });
+
+          // Track this notification for reply-based approval
+          this.pendingPairingApprovals.set(Number(result.messageId), {
+            code,
+            userId: String(userId),
+            username: userInfo.username || userInfo.firstName || String(userId),
+          });
+
+          // Clean up old entries (keep last 100)
+          if (this.pendingPairingApprovals.size > 100) {
+            const oldest = this.pendingPairingApprovals.keys().next().value;
+            if (oldest !== undefined) {
+              this.pendingPairingApprovals.delete(oldest);
             }
-          } catch (err) {
-            console.error(`[Telegram MTProto] Failed to send admin notification:`, err);
-            // Fall back to console
-            console.log(`[Telegram MTProto] Pairing request from ${userInfo.username || userId}: ${request.code}`);
-            console.log(`[Telegram MTProto] To approve: lettabot pairing approve telegram-mtproto ${request.code}`);
           }
-        } else {
-          // No admin chat configured, log to console
-          const userInfo = await this.getUserInfo(userId);
-          console.log(`[Telegram MTProto] Pairing request from ${userInfo.username || userId}: ${request.code}`);
-          console.log(`[Telegram MTProto] To approve: lettabot pairing approve telegram-mtproto ${request.code}`);
+        } catch (err) {
+          console.error(`[Telegram MTProto] Failed to send admin notification:`, err);
+          // Fall back to console
+          console.log(`[Telegram MTProto] Pairing request from ${userInfo.username || userId}: ${code}`);
+          console.log(`[Telegram MTProto] To approve: lettabot pairing approve telegram-mtproto ${code}`);
         }
+      } else {
+        // No admin chat configured, log to console
+        const userInfo = await this.getUserInfo(userId);
+        console.log(`[Telegram MTProto] Pairing request from ${userInfo.username || userId}: ${code}`);
+        console.log(`[Telegram MTProto] To approve: lettabot pairing approve telegram-mtproto ${code}`);
       }
       return;
     }

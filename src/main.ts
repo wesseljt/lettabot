@@ -402,12 +402,12 @@ function createGroupBatcher(
       instantIds.add(`telegram:${id}`);
     }
   }
-  // telegram-mtproto uses 'telegram' as channel name but has its own config
+  // telegram-mtproto has independent channel IDs for group batching
   const mtprotoConfig = agentConfig.channels['telegram-mtproto'];
   if (mtprotoConfig) {
-    intervals.set('telegram', resolveDebounceMs(mtprotoConfig as any));
+    intervals.set('telegram-mtproto', resolveDebounceMs(mtprotoConfig as any));
     for (const id of mtprotoConfig.instantGroups || []) {
-      instantIds.add(`telegram:${id}`);
+      instantIds.add(`telegram-mtproto:${id}`);
     }
   }
   if (agentConfig.channels.slack) {
