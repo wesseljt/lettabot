@@ -14,12 +14,16 @@ import { createApiServer } from './api/server.js';
 import { loadOrGenerateApiKey } from './api/auth.js';
 
 // Load YAML config and apply to process.env (overrides .env values)
-import { loadConfig, applyConfigToEnv, syncProviders, resolveConfigPath } from './config/index.js';
+import { loadConfig, applyConfigToEnv, syncProviders, resolveConfigPath, didLoadFail } from './config/index.js';
 import { isLettaCloudUrl } from './utils/server.js';
 import { getDataDir, getWorkingDir, hasRailwayVolume } from './utils/paths.js';
 const yamlConfig = loadConfig();
-const configSource = existsSync(resolveConfigPath()) ? resolveConfigPath() : 'defaults + environment variables';
-console.log(`[Config] Loaded from ${configSource}`);
+if (didLoadFail()) {
+  console.warn(`[Config] Fix the errors above in ${resolveConfigPath()} and restart.`);
+} else {
+  const configSource = existsSync(resolveConfigPath()) ? resolveConfigPath() : 'defaults + environment variables';
+  console.log(`[Config] Loaded from ${configSource}`);
+}
 if (yamlConfig.agents?.length) {
   console.log(`[Config] Mode: ${yamlConfig.server.mode}, Agents: ${yamlConfig.agents.map(a => a.name).join(', ')}`);
 } else {

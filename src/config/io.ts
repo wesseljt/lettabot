@@ -46,9 +46,17 @@ export function resolveConfigPath(): string {
 }
 
 /**
+ * Whether the last loadConfig() call failed to parse the config file.
+ * Used to avoid misleading "Loaded from" messages when the file exists but has syntax errors.
+ */
+let _lastLoadFailed = false;
+export function didLoadFail(): boolean { return _lastLoadFailed; }
+
+/**
  * Load config from YAML file
  */
 export function loadConfig(): LettaBotConfig {
+  _lastLoadFailed = false;
   const configPath = resolveConfigPath();
   
   if (!existsSync(configPath)) {
@@ -65,15 +73,24 @@ export function loadConfig(): LettaBotConfig {
     fixLargeGroupIds(content, parsed);
 
     // Merge with defaults
-    return {
+    const config = {
       ...DEFAULT_CONFIG,
       ...parsed,
       server: { ...DEFAULT_CONFIG.server, ...parsed.server },
       agent: { ...DEFAULT_CONFIG.agent, ...parsed.agent },
       channels: { ...DEFAULT_CONFIG.channels, ...parsed.channels },
     };
+
+    // Deprecation warning: top-level api should be moved under server
+    if (config.api && !config.server.api) {
+      console.warn('[Config] WARNING: Top-level `api:` is deprecated. Move it under `server:`.');
+    }
+
+    return config;
   } catch (err) {
-    console.error(`[Config] Failed to load ${configPath}:`, err);
+    _lastLoadFailed = true;
+    console.error(`[Config] Failed to parse ${configPath}:`, err);
+    console.warn('[Config] Using default configuration. Check your YAML syntax.');
     return { ...DEFAULT_CONFIG };
   }
 }
@@ -283,15 +300,16 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
     env.ATTACHMENTS_MAX_AGE_DAYS = String(config.attachments.maxAgeDays);
   }
 
-  // API server
-  if (config.api?.port !== undefined) {
-    env.PORT = String(config.api.port);
+  // API server (server.api is canonical, top-level api is deprecated fallback)
+  const apiConfig = config.server.api ?? config.api;
+  if (apiConfig?.port !== undefined) {
+    env.PORT = String(apiConfig.port);
   }
-  if (config.api?.host) {
-    env.API_HOST = config.api.host;
+  if (apiConfig?.host) {
+    env.API_HOST = apiConfig.host;
   }
-  if (config.api?.corsOrigin) {
-    env.API_CORS_ORIGIN = config.api.corsOrigin;
+  if (apiConfig?.corsOrigin) {
+    env.API_CORS_ORIGIN = apiConfig.corsOrigin;
   }
   
   return env;

@@ -56,6 +56,12 @@ export interface LettaBotConfig {
     baseUrl?: string;
     // Only for cloud mode
     apiKey?: string;
+    // API server config (port, host, CORS) — canonical location
+    api?: {
+      port?: number;       // Default: 8080 (or PORT env var)
+      host?: string;       // Default: 127.0.0.1 (secure). Use '0.0.0.0' for Docker/Railway
+      corsOrigin?: string; // CORS origin. Default: same-origin only
+    };
   };
 
   // Multi-agent configuration
@@ -117,6 +123,7 @@ export interface LettaBotConfig {
   };
 
   // API server (health checks, CLI messaging)
+  /** @deprecated Use server.api instead */
   api?: {
     port?: number;       // Default: 8080 (or PORT env var)
     host?: string;       // Default: 127.0.0.1 (secure). Use '0.0.0.0' for Docker/Railway
