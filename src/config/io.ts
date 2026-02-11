@@ -9,7 +9,8 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import YAML from 'yaml';
 import type { LettaBotConfig, ProviderConfig } from './types.js';
-import { DEFAULT_CONFIG } from './types.js';
+import { DEFAULT_CONFIG, canonicalizeServerMode, isApiServerMode, isDockerServerMode } from './types.js';
+import { LETTA_API_URL } from '../auth/oauth.js';
 
 // Config file locations (checked in order)
 const CONFIG_PATHS = [
@@ -64,13 +65,21 @@ export function loadConfig(): LettaBotConfig {
     // Re-extract from document AST to preserve the original string representation.
     fixLargeGroupIds(content, parsed);
 
-    // Merge with defaults
-    return {
+    // Merge with defaults and canonicalize server mode.
+    const merged = {
       ...DEFAULT_CONFIG,
       ...parsed,
       server: { ...DEFAULT_CONFIG.server, ...parsed.server },
       agent: { ...DEFAULT_CONFIG.agent, ...parsed.agent },
       channels: { ...DEFAULT_CONFIG.channels, ...parsed.channels },
+    };
+
+    return {
+      ...merged,
+      server: {
+        ...merged.server,
+        mode: canonicalizeServerMode(merged.server.mode),
+      },
     };
   } catch (err) {
     console.error(`[Config] Failed to load ${configPath}:`, err);
@@ -107,7 +116,7 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   const env: Record<string, string> = {};
   
   // Server
-  if (config.server.mode === 'selfhosted' && config.server.baseUrl) {
+  if (isDockerServerMode(config.server.mode) && config.server.baseUrl) {
     env.LETTA_BASE_URL = config.server.baseUrl;
   }
   if (config.server.apiKey) {
@@ -309,10 +318,10 @@ export function applyConfigToEnv(config: LettaBotConfig): void {
 }
 
 /**
- * Create BYOK providers on Letta Cloud
+ * Create BYOK providers on Letta API
  */
 export async function syncProviders(config: Partial<LettaBotConfig> & Pick<LettaBotConfig, 'server'>): Promise<void> {
-  if (config.server.mode !== 'cloud' || !config.server.apiKey) {
+  if (!isApiServerMode(config.server.mode) || !config.server.apiKey) {
     return;
   }
   
@@ -321,7 +330,7 @@ export async function syncProviders(config: Partial<LettaBotConfig> & Pick<Letta
   }
   
   const apiKey = config.server.apiKey;
-  const baseUrl = 'https://api.letta.com';
+  const baseUrl = LETTA_API_URL;
   
   // List existing providers
   const listResponse = await fetch(`${baseUrl}/v1/providers`, {

@@ -21,8 +21,8 @@ For global installs (`npm install -g`), either:
 ```yaml
 # Server connection
 server:
-  mode: cloud                    # 'cloud' or 'selfhosted'
-  apiKey: letta_...              # Required for cloud mode
+  mode: api                      # 'api' or 'docker' (legacy: 'cloud'/'selfhosted')
+  apiKey: letta_...              # Required for api mode
 
 # Agent settings (single agent mode)
 # For multiple agents, use `agents:` array instead -- see Multi-Agent section
@@ -98,15 +98,15 @@ api:
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `server.mode` | `'cloud'` \| `'selfhosted'` | Connection mode |
-| `server.apiKey` | string | API key for Letta Cloud |
-| `server.baseUrl` | string | URL for self-hosted server (e.g., `http://localhost:8283`) |
+| `server.mode` | `'api'` \| `'docker'` | Connection mode (legacy aliases: `'cloud'`, `'selfhosted'`) |
+| `server.apiKey` | string | API key for Letta API |
+| `server.baseUrl` | string | URL for Docker/custom server (e.g., `http://localhost:8283`) |
 
-### Self-Hosted Mode
+### Docker Server Mode
 
 ```yaml
 server:
-  mode: selfhosted
+  mode: docker
   baseUrl: http://localhost:8283
 ```
 
@@ -142,7 +142,7 @@ Use the `agents:` array instead of the top-level `agent:` and `channels:` keys:
 
 ```yaml
 server:
-  mode: cloud
+  mode: api
   apiKey: letta_...
 
 agents:

@@ -14,16 +14,23 @@ import { createApiServer } from './api/server.js';
 import { loadOrGenerateApiKey } from './api/auth.js';
 
 // Load YAML config and apply to process.env (overrides .env values)
-import { loadConfig, applyConfigToEnv, syncProviders, resolveConfigPath } from './config/index.js';
-import { isLettaCloudUrl } from './utils/server.js';
+import {
+  loadConfig,
+  applyConfigToEnv,
+  syncProviders,
+  resolveConfigPath,
+  isDockerServerMode,
+  serverModeLabel,
+} from './config/index.js';
+import { isLettaApiUrl } from './utils/server.js';
 import { getDataDir, getWorkingDir, hasRailwayVolume } from './utils/paths.js';
 const yamlConfig = loadConfig();
 const configSource = existsSync(resolveConfigPath()) ? resolveConfigPath() : 'defaults + environment variables';
 console.log(`[Config] Loaded from ${configSource}`);
 if (yamlConfig.agents?.length) {
-  console.log(`[Config] Mode: ${yamlConfig.server.mode}, Agents: ${yamlConfig.agents.map(a => a.name).join(', ')}`);
+  console.log(`[Config] Mode: ${serverModeLabel(yamlConfig.server.mode)}, Agents: ${yamlConfig.agents.map(a => a.name).join(', ')}`);
 } else {
-  console.log(`[Config] Mode: ${yamlConfig.server.mode}, Agent: ${yamlConfig.agent.name}`);
+  console.log(`[Config] Mode: ${serverModeLabel(yamlConfig.server.mode)}, Agent: ${yamlConfig.agent.name}`);
 }
 if (yamlConfig.agent?.model) {
   console.warn('[Config] WARNING: agent.model in lettabot.yaml is deprecated and ignored. Use `lettabot model set <handle>` instead.');
@@ -98,8 +105,8 @@ async function refreshTokensIfNeeded(): Promise<void> {
     return;
   }
   
-  // OAuth tokens only work with Letta Cloud - skip if using custom server
-  if (!isLettaCloudUrl(process.env.LETTA_BASE_URL)) {
+  // OAuth tokens only work with Letta API - skip if using custom server
+  if (!isLettaApiUrl(process.env.LETTA_BASE_URL)) {
     return;
   }
   
@@ -435,11 +442,11 @@ const globalConfig = {
   cronEnabled: process.env.CRON_ENABLED === 'true',  // Legacy env var fallback
 };
 
-// Validate LETTA_API_KEY is set for cloud mode (selfhosted mode doesn't require it)
-if (yamlConfig.server.mode !== 'selfhosted' && !process.env.LETTA_API_KEY) {
-  console.error('\n  Error: LETTA_API_KEY is required for Letta Cloud.');
+// Validate LETTA_API_KEY is set for API mode (docker mode doesn't require it)
+if (!isDockerServerMode(yamlConfig.server.mode) && !process.env.LETTA_API_KEY) {
+  console.error('\n  Error: LETTA_API_KEY is required for Letta API.');
   console.error('  Get your API key from https://app.letta.com and set it as an environment variable.');
-  console.error('  Or use selfhosted mode: run "lettabot onboard" and select "Enter self-hosted URL".\n');
+  console.error('  Or use docker mode: run "lettabot onboard" and select "Enter Docker server URL".\n');
   process.exit(1);
 }
 

@@ -17,7 +17,7 @@ Deploy LettaBot to [Railway](https://railway.app) for always-on hosting.
 
 | Variable | Description |
 |----------|-------------|
-| `LETTA_API_KEY` | Your Letta Cloud API key ([get one here](https://app.letta.com)) |
+| `LETTA_API_KEY` | Your Letta API key ([get one here](https://app.letta.com)) |
 
 ### Channel Configuration (at least one required)
 
@@ -59,7 +59,7 @@ SLACK_APP_TOKEN=xapp-...
 
 On startup, LettaBot:
 1. Checks for `LETTA_AGENT_ID` env var - uses if set
-2. Otherwise, searches Letta Cloud for an agent named `LETTA_AGENT_NAME` (or legacy `AGENT_NAME`, default: "LettaBot")
+2. Otherwise, searches Letta API for an agent named `LETTA_AGENT_NAME` (or legacy `AGENT_NAME`, default: "LettaBot")
 3. If found, uses the existing agent (preserves memory!)
 4. If not found, creates a new agent on first message
 

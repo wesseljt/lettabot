@@ -2,9 +2,28 @@
  * LettaBot Configuration Types
  * 
  * Two modes:
- * 1. Self-hosted: Uses baseUrl (e.g., http://localhost:8283), no API key
- * 2. Letta Cloud: Uses apiKey, optional BYOK providers
+ * 1. Docker server: Uses baseUrl (e.g., http://localhost:8283), no API key
+ * 2. Letta API: Uses apiKey, optional BYOK providers
  */
+
+export type ServerMode = 'api' | 'docker' | 'cloud' | 'selfhosted';
+export type CanonicalServerMode = 'api' | 'docker';
+
+export function canonicalizeServerMode(mode?: ServerMode): CanonicalServerMode {
+  return mode === 'docker' || mode === 'selfhosted' ? 'docker' : 'api';
+}
+
+export function isDockerServerMode(mode?: ServerMode): boolean {
+  return canonicalizeServerMode(mode) === 'docker';
+}
+
+export function isApiServerMode(mode?: ServerMode): boolean {
+  return canonicalizeServerMode(mode) === 'api';
+}
+
+export function serverModeLabel(mode?: ServerMode): string {
+  return canonicalizeServerMode(mode);
+}
 
 /**
  * Configuration for a single agent in multi-agent mode.
@@ -50,11 +69,12 @@ export interface AgentConfig {
 export interface LettaBotConfig {
   // Server connection
   server: {
-    // 'cloud' (api.letta.com) or 'selfhosted'
-    mode: 'cloud' | 'selfhosted';
-    // Only for selfhosted mode
+    // Canonical values: 'api' or 'docker'
+    // Legacy aliases accepted for compatibility: 'cloud', 'selfhosted'
+    mode: ServerMode;
+    // Only for docker mode
     baseUrl?: string;
-    // Only for cloud mode
+    // Only for api mode
     apiKey?: string;
   };
 
@@ -71,7 +91,7 @@ export interface LettaBotConfig {
     model?: string;
   };
 
-  // BYOK providers (cloud mode only)
+  // BYOK providers (api mode only)
   providers?: ProviderConfig[];
 
   // Channel configurations
@@ -272,7 +292,7 @@ export interface GoogleConfig {
 // Default config
 export const DEFAULT_CONFIG: LettaBotConfig = {
   server: {
-    mode: 'cloud',
+    mode: 'api',
   },
   agent: {
     name: 'LettaBot',
