@@ -405,7 +405,7 @@ function createGroupBatcher(
   // telegram-mtproto has independent channel IDs for group batching
   const mtprotoConfig = agentConfig.channels['telegram-mtproto'];
   if (mtprotoConfig) {
-    intervals.set('telegram-mtproto', resolveDebounceMs(mtprotoConfig as any));
+    intervals.set('telegram-mtproto', resolveDebounceMs(mtprotoConfig));
     for (const id of mtprotoConfig.instantGroups || []) {
       instantIds.add(`telegram-mtproto:${id}`);
     }
