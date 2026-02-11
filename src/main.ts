@@ -154,6 +154,7 @@ import { WhatsAppAdapter } from './channels/whatsapp/index.js';
 import { SignalAdapter } from './channels/signal.js';
 import { DiscordAdapter } from './channels/discord.js';
 import { GroupBatcher } from './core/group-batcher.js';
+import { printStartupBanner } from './core/banner.js';
 import { collectGroupBatchingConfig } from './core/group-batching-config.js';
 import { CronService } from './cron/service.js';
 import { HeartbeatService } from './cron/heartbeat.js';
@@ -645,16 +646,24 @@ async function main() {
     host: apiHost,
     corsOrigin: apiCorsOrigin,
   });
-
-  // Status logging
-  console.log('\n=================================');
-  console.log(`LettaBot is running! (${gateway.size} agent${gateway.size > 1 ? 's' : ''})`);
-  console.log('=================================');
-  for (const name of gateway.getAgentNames()) {
-    const status = gateway.getAgent(name)!.getStatus();
-    console.log(`  ${name}: ${status.agentId || '(pending)'} [${status.channels.join(', ')}]`);
-  }
-  console.log('=================================\n');
+  
+  // Startup banner
+  const bannerAgents = gateway.getAgentNames().map(name => {
+    const agent = gateway.getAgent(name)!;
+    const status = agent.getStatus();
+    const cfg = agents.find(a => a.name === name);
+    const hbCfg = cfg?.features?.heartbeat;
+    return {
+      name,
+      agentId: status.agentId,
+      channels: status.channels,
+      features: {
+        cron: cfg?.features?.cron ?? globalConfig.cronEnabled,
+        heartbeatIntervalMin: hbCfg?.enabled ? (hbCfg.intervalMin ?? 30) : undefined,
+      },
+    };
+  });
+  printStartupBanner(bannerAgents);
   
   // Shutdown
   const shutdown = async () => {
