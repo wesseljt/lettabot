@@ -178,6 +178,8 @@ export type GroupMode = 'open' | 'listen' | 'mention-only';
 
 export interface GroupConfig {
   mode?: GroupMode;
+  /** Only process group messages from these user IDs. Omit to allow all users. */
+  allowedUsers?: string[];
   /**
    * @deprecated Use mode: "mention-only" (true) or "open" (false).
    */

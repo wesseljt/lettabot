@@ -183,6 +183,26 @@ channels:
 
 This is the recommended approach when you want to restrict the bot to specific channels.
 
+### Per-group user filtering
+
+Use `allowedUsers` within a group entry to restrict which Discord users can trigger the bot. Messages from other users are silently dropped before reaching the agent.
+
+```yaml
+channels:
+  discord:
+    token: "your-bot-token"
+    groups:
+      "*":
+        mode: mention-only
+        allowedUsers:
+          - "YOUR_DISCORD_USER_ID"   # Only you can trigger the bot
+      "TESTING_CHANNEL":
+        mode: open
+        # No allowedUsers -- anyone can interact here
+```
+
+Find your Discord user ID: enable Developer Mode in Discord settings, then right-click your name and select "Copy User ID".
+
 ## Multiple Bots on Discord
 
 If you run multiple agents in a [multi-agent configuration](./configuration.md#multi-agent-configuration), each with their own Discord adapter, there are two scenarios to consider.

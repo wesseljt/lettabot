@@ -11,7 +11,7 @@ import type { DmPolicy } from '../pairing/types.js';
 import { isUserAllowed, upsertPairingRequest } from '../pairing/store.js';
 import { buildAttachmentPath, downloadToFile } from './attachments.js';
 import { HELP_TEXT } from '../core/commands.js';
-import { isGroupAllowed, resolveGroupMode, type GroupModeConfig } from './group-mode.js';
+import { isGroupAllowed, isGroupUserAllowed, resolveGroupMode, type GroupModeConfig } from './group-mode.js';
 
 // Dynamic import to avoid requiring Discord deps if not used
 let Client: typeof import('discord.js').Client;
@@ -254,6 +254,10 @@ Ask the bot owner to approve with:
           if (!isGroupAllowed(this.config.groups, keys)) {
             console.log(`[Discord] Group ${chatId} not in allowlist, ignoring`);
             return;
+          }
+
+          if (!isGroupUserAllowed(this.config.groups, keys, userId)) {
+            return; // User not in group allowedUsers -- silent drop
           }
 
           const mode = resolveGroupMode(this.config.groups, keys, 'open');

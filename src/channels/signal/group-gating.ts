@@ -4,7 +4,7 @@
  * Filters group messages based on per-group mode and mention detection.
  */
 
-import { isGroupAllowed, resolveGroupMode, type GroupMode } from '../group-mode.js';
+import { isGroupAllowed, isGroupUserAllowed, resolveGroupMode, type GroupMode } from '../group-mode.js';
 
 export interface SignalGroupConfig {
   mode?: GroupMode;
@@ -44,6 +44,9 @@ export interface SignalGroupGatingParams {
   /** Bot's Signal UUID (if known) */
   selfUuid?: string;
   
+  /** Sender identifier (phone number or UUID) for per-group allowedUsers check */
+  senderId?: string;
+
   /** Per-group configuration */
   groupsConfig?: Record<string, SignalGroupConfig>;
   
@@ -81,7 +84,7 @@ export interface SignalGroupGatingResult {
  * @returns Gating decision
  */
 export function applySignalGroupGating(params: SignalGroupGatingParams): SignalGroupGatingResult {
-  const { text, groupId, mentions, quote, selfPhoneNumber, selfUuid, groupsConfig, mentionPatterns } = params;
+  const { text, groupId, senderId, mentions, quote, selfPhoneNumber, selfUuid, groupsConfig, mentionPatterns } = params;
   const groupKeys = [groupId, `group:${groupId}`];
 
   // Step 1: Check group allowlist (if groups config exists)
@@ -90,6 +93,15 @@ export function applySignalGroupGating(params: SignalGroupGatingParams): SignalG
       shouldProcess: false,
       mode: 'open',
       reason: 'group-not-in-allowlist',
+    };
+  }
+
+  // Step 1b: Per-group user allowlist
+  if (senderId && !isGroupUserAllowed(groupsConfig, groupKeys, senderId)) {
+    return {
+      shouldProcess: false,
+      mode: 'open',
+      reason: 'user-not-allowed',
     };
   }
 

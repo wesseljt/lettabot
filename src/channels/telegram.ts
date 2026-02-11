@@ -73,6 +73,7 @@ export class TelegramAdapter implements ChannelAdapter {
     const gatingResult = applyTelegramGroupGating({
       text,
       chatId: String(ctx.chat.id),
+      senderId: ctx.from?.id ? String(ctx.from.id) : undefined,
       botUsername,
       entities: ctx.message?.entities?.map(e => ({
         type: e.type,

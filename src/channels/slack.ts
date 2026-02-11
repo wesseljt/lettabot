@@ -11,7 +11,7 @@ import { basename } from 'node:path';
 import { buildAttachmentPath, downloadToFile } from './attachments.js';
 import { parseCommand, HELP_TEXT } from '../core/commands.js';
 import { markdownToSlackMrkdwn } from './slack-format.js';
-import { isGroupAllowed, resolveGroupMode, type GroupMode, type GroupModeConfig } from './group-mode.js';
+import { isGroupAllowed, isGroupUserAllowed, resolveGroupMode, type GroupMode, type GroupModeConfig } from './group-mode.js';
 
 // Dynamic import to avoid requiring Slack deps if not used
 let App: typeof import('@slack/bolt').App;
@@ -138,6 +138,9 @@ export class SlackAdapter implements ChannelAdapter {
           if (!this.isChannelAllowed(channelId)) {
             return; // Channel not in allowlist -- silent drop
           }
+          if (!isGroupUserAllowed(this.config.groups, [channelId], userId || '')) {
+            return; // User not in group allowedUsers -- silent drop
+          }
           mode = this.resolveChannelMode(channelId);
           if (mode === 'mention-only') {
             // Non-mention message in channel that requires mentions.
@@ -181,6 +184,9 @@ export class SlackAdapter implements ChannelAdapter {
       // Group gating: allowlist check (mention already satisfied by app_mention)
       if (this.config.groups && !this.isChannelAllowed(channelId)) {
         return; // Channel not in allowlist -- silent drop
+      }
+      if (!isGroupUserAllowed(this.config.groups, [channelId], userId)) {
+        return; // User not in group allowedUsers -- silent drop
       }
       
       // Handle slash commands

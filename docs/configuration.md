@@ -283,6 +283,27 @@ channels:
       "-1009876543210": { mode: mention-only }
 ```
 
+### Per-Group User Filtering
+
+Use `groups.<id>.allowedUsers` to restrict which users can trigger the bot in a specific group. When set, messages from users not in the list are silently dropped before reaching the agent (no token cost).
+
+```yaml
+channels:
+  discord:
+    groups:
+      "*":
+        mode: mention-only
+        allowedUsers:
+          - "123456789012345678"     # Only this user triggers the bot
+      "TESTING_CHANNEL":
+        mode: open
+        # No allowedUsers -- anyone can interact in this channel
+```
+
+Resolution follows the same priority as `mode`: specific channel/group ID > guild/server ID > `*` wildcard. Omitting `allowedUsers` means all users are allowed.
+
+This works across all channels (Discord, Telegram, Slack, Signal, WhatsApp).
+
 Deprecated formats are still supported and auto-normalized with warnings:
 
 - `listeningGroups: ["id"]` -> `groups: { "id": { mode: listen } }`
