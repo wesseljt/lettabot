@@ -6,7 +6,7 @@
  */
 
 import * as p from '@clack/prompts';
-import { loadConfig, saveConfig, resolveConfigPath } from '../config/index.js';
+import { loadAppConfigOrExit, saveConfig, resolveConfigPath } from '../config/index.js';
 import { 
   CHANNELS, 
   getChannelHint, 
@@ -46,7 +46,7 @@ function getChannelDetails(id: ChannelId, channelConfig: any): string | undefine
 }
 
 function getChannelStatus(): ChannelStatus[] {
-  const config = loadConfig();
+  const config = loadAppConfigOrExit();
   
   return CHANNELS.map(ch => {
     const channelConfig = config.channels[ch.id as keyof typeof config.channels];
@@ -202,7 +202,7 @@ export async function addChannel(channelId?: string): Promise<void> {
     process.exit(1);
   }
   
-  const config = loadConfig();
+  const config = loadAppConfigOrExit();
   const existingConfig = config.channels[channelId as keyof typeof config.channels];
   
   // Get and run the setup function
@@ -230,7 +230,7 @@ export async function removeChannel(channelId?: string): Promise<void> {
     process.exit(1);
   }
   
-  const config = loadConfig();
+  const config = loadAppConfigOrExit();
   const channelConfig = config.channels[channelId as keyof typeof config.channels];
   
   if (!channelConfig?.enabled) {

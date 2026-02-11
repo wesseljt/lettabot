@@ -9,8 +9,8 @@
  */
 
 // Config loaded from lettabot.yaml
-import { loadConfig, applyConfigToEnv, serverModeLabel } from './config/index.js';
-const config = loadConfig();
+import { loadAppConfigOrExit, applyConfigToEnv, serverModeLabel } from './config/index.js';
+const config = loadAppConfigOrExit();
 applyConfigToEnv(config);
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
