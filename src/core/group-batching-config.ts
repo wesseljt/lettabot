@@ -1,6 +1,10 @@
 import type { AgentConfig } from '../config/types.js';
 
 type DebounceConfig = { groupDebounceSec?: number; groupPollIntervalMin?: number };
+type GroupBatchingConfig = DebounceConfig & {
+  instantGroups?: string[];
+  listeningGroups?: string[];
+};
 
 /**
  * Resolve group debounce value to milliseconds.
@@ -18,52 +22,37 @@ export function resolveDebounceMs(channel: DebounceConfig): number {
  */
 export function collectGroupBatchingConfig(
   channels: AgentConfig['channels'],
-): { intervals: Map<string, number>; instantIds: Set<string> } {
+): { intervals: Map<string, number>; instantIds: Set<string>; listeningIds: Set<string> } {
   const intervals = new Map<string, number>();
   const instantIds = new Set<string>();
+  const listeningIds = new Set<string>();
 
-  if (channels.telegram) {
-    intervals.set('telegram', resolveDebounceMs(channels.telegram));
-    for (const id of channels.telegram.instantGroups || []) {
-      instantIds.add(`telegram:${id}`);
+  const addChannel = (channel: string, config?: GroupBatchingConfig): void => {
+    if (!config) return;
+    intervals.set(channel, resolveDebounceMs(config));
+    for (const id of config.instantGroups || []) {
+      instantIds.add(`${channel}:${id}`);
     }
-  }
+    for (const id of config.listeningGroups || []) {
+      listeningIds.add(`${channel}:${id}`);
+    }
+  };
+
+  addChannel('telegram', channels.telegram);
 
   const mtprotoConfig = channels['telegram-mtproto'];
   if (mtprotoConfig) {
+    // MTProto does not currently support listeningGroups, only instant/debounce behavior.
     intervals.set('telegram-mtproto', resolveDebounceMs(mtprotoConfig));
     for (const id of mtprotoConfig.instantGroups || []) {
       instantIds.add(`telegram-mtproto:${id}`);
     }
   }
 
-  if (channels.slack) {
-    intervals.set('slack', resolveDebounceMs(channels.slack));
-    for (const id of channels.slack.instantGroups || []) {
-      instantIds.add(`slack:${id}`);
-    }
-  }
+  addChannel('slack', channels.slack);
+  addChannel('whatsapp', channels.whatsapp);
+  addChannel('signal', channels.signal);
+  addChannel('discord', channels.discord);
 
-  if (channels.whatsapp) {
-    intervals.set('whatsapp', resolveDebounceMs(channels.whatsapp));
-    for (const id of channels.whatsapp.instantGroups || []) {
-      instantIds.add(`whatsapp:${id}`);
-    }
-  }
-
-  if (channels.signal) {
-    intervals.set('signal', resolveDebounceMs(channels.signal));
-    for (const id of channels.signal.instantGroups || []) {
-      instantIds.add(`signal:${id}`);
-    }
-  }
-
-  if (channels.discord) {
-    intervals.set('discord', resolveDebounceMs(channels.discord));
-    for (const id of channels.discord.instantGroups || []) {
-      instantIds.add(`discord:${id}`);
-    }
-  }
-
-  return { intervals, instantIds };
+  return { intervals, instantIds, listeningIds };
 }

@@ -123,6 +123,7 @@ export class LettaBot implements AgentSession {
   private groupBatcher?: GroupBatcher;
   private groupIntervals: Map<string, number> = new Map();
   private instantGroupIds: Set<string> = new Set();
+  private listeningGroupIds: Set<string> = new Set();
   private processing = false;
   
   constructor(config: BotConfig) {
@@ -133,15 +134,37 @@ export class LettaBot implements AgentSession {
   }
 
   // =========================================================================
+  // Response prefix (for multi-agent group chat identification)
+  // =========================================================================
+
+  /**
+   * Prepend configured displayName prefix to outbound agent responses.
+   * Returns text unchanged if no prefix is configured.
+   */
+  private prefixResponse(text: string): string {
+    if (!this.config.displayName) return text;
+    return `${this.config.displayName}: ${text}`;
+  }
+
+  // =========================================================================
   // Session options (shared by processMessage and sendToAgent)
   // =========================================================================
 
   private get baseSessionOptions() {
+    const disallowedTools = this.config.disallowedTools || [];
+
     return {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
+      disallowedTools,
       cwd: this.config.workingDir,
       canUseTool: (toolName: string, _toolInput: Record<string, unknown>) => {
+        if (disallowedTools.includes(toolName)) {
+          return {
+            behavior: 'deny' as const,
+            message: `Tool '${toolName}' is blocked by bot configuration`,
+          };
+        }
         console.log(`[Bot] Tool approval requested: ${toolName} (should be auto-approved by bypassPermissions)`);
         return { behavior: 'allow' as const };
       },
@@ -199,7 +222,10 @@ export class LettaBot implements AgentSession {
     }
     if (this.store.agentId) {
       process.env.LETTA_AGENT_ID = this.store.agentId;
-      return resumeSession(this.store.agentId, opts);
+      // Create a new conversation instead of resuming the default.
+      // This handles the case where the default conversation was deleted
+      // or never created (e.g., after migrations).
+      return createSession(this.store.agentId, opts);
     }
 
     // Create new agent -- persist immediately so we don't orphan it on later failures
@@ -338,11 +364,14 @@ export class LettaBot implements AgentSession {
     console.log(`Registered channel: ${adapter.name}`);
   }
   
-  setGroupBatcher(batcher: GroupBatcher, intervals: Map<string, number>, instantGroupIds?: Set<string>): void {
+  setGroupBatcher(batcher: GroupBatcher, intervals: Map<string, number>, instantGroupIds?: Set<string>, listeningGroupIds?: Set<string>): void {
     this.groupBatcher = batcher;
     this.groupIntervals = intervals;
     if (instantGroupIds) {
       this.instantGroupIds = instantGroupIds;
+    }
+    if (listeningGroupIds) {
+      this.listeningGroupIds = listeningGroupIds;
     }
     console.log('[Bot] Group batcher configured');
   }
@@ -353,6 +382,16 @@ export class LettaBot implements AgentSession {
     const effective = (count === 1 && msg.batchedMessages)
       ? msg.batchedMessages[0]
       : msg;
+
+    // Legacy listeningGroups fallback (new mode-based configs set isListeningMode in adapters)
+    if (effective.isListeningMode === undefined) {
+      const isListening = this.listeningGroupIds.has(`${msg.channel}:${msg.chatId}`)
+        || (msg.serverId && this.listeningGroupIds.has(`${msg.channel}:${msg.serverId}`));
+      if (isListening && !msg.wasMentioned) {
+        effective.isListeningMode = true;
+      }
+    }
+
     this.messageQueue.push({ msg: effective, adapter });
     if (!this.processing) {
       this.processQueue().catch(err => console.error('[Queue] Fatal error in processQueue:', err));
@@ -538,23 +577,32 @@ export class LettaBot implements AgentSession {
   private async processMessage(msg: InboundMessage, adapter: ChannelAdapter, retried = false): Promise<void> {
     // Track timing and last target
     this.lastUserMessageTime = new Date();
-    this.store.lastMessageTarget = {
-      channel: msg.channel,
-      chatId: msg.chatId,
-      messageId: msg.messageId,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    await adapter.sendTypingIndicator(msg.chatId);
-    
+
+    // Skip heartbeat target update for listening mode (don't redirect heartbeats)
+    if (!msg.isListeningMode) {
+      this.store.lastMessageTarget = {
+        channel: msg.channel,
+        chatId: msg.chatId,
+        messageId: msg.messageId,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    // Skip typing indicator for listening mode
+    if (!msg.isListeningMode) {
+      await adapter.sendTypingIndicator(msg.chatId);
+    }
+
     // Pre-send approval recovery
     const recovery = await this.attemptRecovery();
     if (recovery.shouldReset) {
-      await adapter.sendMessage({
-        chatId: msg.chatId,
-        text: '(Session recovery failed after multiple attempts. Try: lettabot reset-conversation)',
-        threadId: msg.threadId,
-      });
+      if (!msg.isListeningMode) {
+        await adapter.sendMessage({
+          chatId: msg.chatId,
+          text: '(Session recovery failed after multiple attempts. Try: lettabot reset-conversation)',
+          threadId: msg.threadId,
+        });
+      }
       return;
     }
 
@@ -567,7 +615,7 @@ export class LettaBot implements AgentSession {
     } : undefined;
 
     const formattedText = msg.isBatch && msg.batchedMessages
-      ? formatGroupBatchEnvelope(msg.batchedMessages)
+      ? formatGroupBatchEnvelope(msg.batchedMessages, {}, msg.isListeningMode)
       : formatMessageEnvelope(msg, {}, sessionContext);
     const messageToSend = await buildMultimodalMessage(formattedText, msg);
 
@@ -585,6 +633,7 @@ export class LettaBot implements AgentSession {
       let lastAssistantUuid: string | null = null;
       let sentAnyMessage = false;
       let receivedAnyData = false;
+      let sawNonAssistantSinceLastUuid = false;
       const msgTypeCounts: Record<string, number> = {};
       
       const finalizeMessage = async () => {
@@ -606,10 +655,11 @@ export class LettaBot implements AgentSession {
         }
         if (response.trim()) {
           try {
+            const prefixed = this.prefixResponse(response);
             if (messageId) {
-              await adapter.editMessage(msg.chatId, messageId, response);
+              await adapter.editMessage(msg.chatId, messageId, prefixed);
             } else {
-              await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
+              await adapter.sendMessage({ chatId: msg.chatId, text: prefixed, threadId: msg.threadId });
             }
             sentAnyMessage = true;
           } catch {
@@ -633,8 +683,8 @@ export class LettaBot implements AgentSession {
           const preview = JSON.stringify(streamMsg).slice(0, 300);
           console.log(`[Stream] type=${streamMsg.type} ${preview}`);
           
-          // Finalize on type change
-          if (lastMsgType && lastMsgType !== streamMsg.type && response.trim()) {
+          // Finalize on type change (avoid double-handling when result provides full response)
+          if (lastMsgType && lastMsgType !== streamMsg.type && response.trim() && streamMsg.type !== 'result') {
             await finalizeMessage();
           }
           
@@ -647,22 +697,37 @@ export class LettaBot implements AgentSession {
             break;
           }
 
-          // Log meaningful events
+          // Log meaningful events with structured summaries
           if (streamMsg.type === 'tool_call') {
-            console.log(`[Bot] Calling tool: ${streamMsg.toolName || 'unknown'}`);
+            console.log(`[Stream] >>> TOOL CALL: ${streamMsg.toolName || 'unknown'} (id: ${streamMsg.toolCallId?.slice(0, 12) || '?'})`);
+            sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'tool_result') {
-            console.log(`[Bot] Tool completed: error=${streamMsg.isError}, resultLen=${(streamMsg as any).content?.length || 0}`);
+            console.log(`[Stream] <<< TOOL RESULT: error=${streamMsg.isError}, len=${(streamMsg as any).content?.length || 0}`);
+            sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'assistant' && lastMsgType !== 'assistant') {
             console.log(`[Bot] Generating response...`);
           } else if (streamMsg.type === 'reasoning' && lastMsgType !== 'reasoning') {
             console.log(`[Bot] Reasoning...`);
+            sawNonAssistantSinceLastUuid = true;
+          } else if (streamMsg.type !== 'assistant') {
+            sawNonAssistantSinceLastUuid = true;
           }
           lastMsgType = streamMsg.type;
           
           if (streamMsg.type === 'assistant') {
             const msgUuid = streamMsg.uuid;
-            if (msgUuid && lastAssistantUuid && msgUuid !== lastAssistantUuid && response.trim()) {
-              await finalizeMessage();
+            if (msgUuid && lastAssistantUuid && msgUuid !== lastAssistantUuid) {
+              if (response.trim()) {
+                if (!sawNonAssistantSinceLastUuid) {
+                  console.warn(`[Stream] WARNING: Assistant UUID changed (${lastAssistantUuid.slice(0, 8)} -> ${msgUuid.slice(0, 8)}) with no visible tool_call/reasoning events between them. Tool call events may have been dropped by SDK transformMessage().`);
+                }
+                await finalizeMessage();
+              }
+              // Start tracking tool/reasoning visibility for the new assistant UUID.
+              sawNonAssistantSinceLastUuid = false;
+            } else if (msgUuid && !lastAssistantUuid) {
+              // Clear any pre-assistant noise so the first UUID becomes a clean baseline.
+              sawNonAssistantSinceLastUuid = false;
             }
             lastAssistantUuid = msgUuid || lastAssistantUuid;
             
@@ -679,10 +744,11 @@ export class LettaBot implements AgentSession {
             const streamText = stripActionsBlock(response).trim();
             if (canEdit && !mayBeHidden && streamText.length > 0 && Date.now() - lastUpdate > 500) {
               try {
+                const prefixedStream = this.prefixResponse(streamText);
                 if (messageId) {
-                  await adapter.editMessage(msg.chatId, messageId, streamText);
+                  await adapter.editMessage(msg.chatId, messageId, prefixedStream);
                 } else {
-                  const result = await adapter.sendMessage({ chatId: msg.chatId, text: streamText, threadId: msg.threadId });
+                  const result = await adapter.sendMessage({ chatId: msg.chatId, text: prefixedStream, threadId: msg.threadId });
                   messageId = result.messageId;
                   sentAnyMessage = true;
                 }
@@ -694,17 +760,43 @@ export class LettaBot implements AgentSession {
           }
           
           if (streamMsg.type === 'result') {
-            console.log(`[Bot] Stream result: success=${streamMsg.success}, hasResponse=${response.trim().length > 0}`);
+            const resultText = typeof streamMsg.result === 'string' ? streamMsg.result : '';
+            if (resultText.trim().length > 0) {
+              response = resultText;
+            }
+            const hasResponse = response.trim().length > 0;
+            const isTerminalError = streamMsg.success === false || !!streamMsg.error;
+            console.log(`[Bot] Stream result: success=${streamMsg.success}, hasResponse=${hasResponse}, resultLen=${resultText.length}`);
             console.log(`[Bot] Stream message counts:`, msgTypeCounts);
             if (streamMsg.error) {
-              console.error(`[Bot] Result error: ${streamMsg.error}`);
+              const detail = resultText.trim();
+              if (detail) {
+                console.error(`[Bot] Result error: ${streamMsg.error} (${detail.slice(0, 200)})`);
+              } else {
+                console.error(`[Bot] Result error: ${streamMsg.error}`);
+              }
             }
-            
-            // Empty result recovery
-            if (streamMsg.success && streamMsg.result === '' && !response.trim()) {
-              console.error('[Bot] Warning: Agent returned empty result with no response.');
+
+            // Retry once when stream ends without any assistant text.
+            // This catches both empty-success and terminal-error runs.
+            // TODO(letta-code-sdk#31): Remove once SDK handles HITL approvals in bypassPermissions mode.
+            // Only retry if we never sent anything to the user. hasResponse tracks
+            // the current buffer, but finalizeMessage() clears it on type changes.
+            // sentAnyMessage is the authoritative "did we deliver output" flag.
+            const nothingDelivered = !hasResponse && !sentAnyMessage;
+            const shouldRetryForEmptyResult = streamMsg.success && resultText === '' && nothingDelivered;
+            const shouldRetryForErrorResult = isTerminalError && nothingDelivered;
+            if (shouldRetryForEmptyResult || shouldRetryForErrorResult) {
+              if (shouldRetryForEmptyResult) {
+                console.error('[Bot] Warning: Agent returned empty result with no response.');
+              }
+              if (shouldRetryForErrorResult) {
+                console.error('[Bot] Warning: Agent returned terminal error result with no response.');
+              }
+
               if (!retried && this.store.agentId && this.store.conversationId) {
-                console.log('[Bot] Empty result - attempting orphaned approval recovery...');
+                const reason = shouldRetryForErrorResult ? 'error result' : 'empty result';
+                console.log(`[Bot] ${reason} - attempting orphaned approval recovery...`);
                 session.close();
                 session = null;
                 clearInterval(typingInterval);
@@ -717,7 +809,19 @@ export class LettaBot implements AgentSession {
                   return this.processMessage(msg, adapter, true);
                 }
                 console.warn(`[Bot] No orphaned approvals found: ${convResult.details}`);
+
+                // Some client-side approval failures do not surface as pending approvals.
+                // Retry once anyway in case the previous run terminated mid-tool cycle.
+                if (shouldRetryForErrorResult) {
+                  console.log('[Bot] Retrying once after terminal error (no orphaned approvals detected)...');
+                  return this.processMessage(msg, adapter, true);
+                }
               }
+            }
+
+            if (isTerminalError && !hasResponse && !sentAnyMessage) {
+              const err = streamMsg.error || 'unknown error';
+              response = `(Agent run failed: ${err}. Try sending your message again.)`;
             }
             
             break;
@@ -748,20 +852,27 @@ export class LettaBot implements AgentSession {
         console.warn('[Bot] Model does not support images -- consider a vision-capable model or features.inlineImages: false');
       }
 
+      // Listening mode: agent processed for memory, suppress response delivery
+      if (msg.isListeningMode) {
+        console.log(`[Bot] Listening mode: processed ${msg.channel}:${msg.chatId} for memory (response suppressed)`);
+        return;
+      }
+
       // Send final response
       if (response.trim()) {
+        const prefixedFinal = this.prefixResponse(response);
         try {
           if (messageId) {
-            await adapter.editMessage(msg.chatId, messageId, response);
+            await adapter.editMessage(msg.chatId, messageId, prefixedFinal);
           } else {
-            await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
+            await adapter.sendMessage({ chatId: msg.chatId, text: prefixedFinal, threadId: msg.threadId });
           }
           sentAnyMessage = true;
           this.store.resetRecoveryAttempts();
         } catch {
           // Edit failed -- send as new message so user isn't left with truncated text
           try {
-            await adapter.sendMessage({ chatId: msg.chatId, text: response, threadId: msg.threadId });
+            await adapter.sendMessage({ chatId: msg.chatId, text: prefixedFinal, threadId: msg.threadId });
             sentAnyMessage = true;
             this.store.resetRecoveryAttempts();
           } catch (retryError) {
@@ -834,7 +945,14 @@ export class LettaBot implements AgentSession {
           if (msg.type === 'assistant') {
             response += msg.content || '';
           }
-          if (msg.type === 'result') break;
+          if (msg.type === 'result') {
+            // TODO(letta-code-sdk#31): Remove once SDK handles HITL approvals in bypassPermissions mode.
+            if (msg.success === false || msg.error) {
+              const detail = typeof msg.result === 'string' ? msg.result.trim() : '';
+              throw new Error(detail ? `Agent run failed: ${msg.error || 'error'} (${detail})` : `Agent run failed: ${msg.error || 'error'}`);
+            }
+            break;
+          }
         }
         return response;
       } finally {
@@ -907,7 +1025,7 @@ export class LettaBot implements AgentSession {
     }
 
     if (options.text) {
-      const result = await adapter.sendMessage({ chatId, text: options.text });
+      const result = await adapter.sendMessage({ chatId, text: this.prefixResponse(options.text) });
       return result.messageId;
     }
 

@@ -62,7 +62,7 @@ export function loadConfig(): LettaBotConfig {
     // Fix instantGroups: YAML parses large numeric IDs (e.g. Discord snowflakes)
     // as JavaScript numbers, losing precision for values > Number.MAX_SAFE_INTEGER.
     // Re-extract from document AST to preserve the original string representation.
-    fixInstantGroupIds(content, parsed);
+    fixLargeGroupIds(content, parsed);
 
     // Merge with defaults
     return {
@@ -81,7 +81,7 @@ export function loadConfig(): LettaBotConfig {
 /**
  * Save config to YAML file
  */
-export function saveConfig(config: LettaBotConfig, path?: string): void {
+export function saveConfig(config: Partial<LettaBotConfig> & Pick<LettaBotConfig, 'server'>, path?: string): void {
   const configPath = path || resolveConfigPath();
   
   // Ensure directory exists
@@ -172,6 +172,9 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   if (config.channels.slack?.instantGroups?.length) {
     env.SLACK_INSTANT_GROUPS = config.channels.slack.instantGroups.join(',');
   }
+  if (config.channels.slack?.listeningGroups?.length) {
+    env.SLACK_LISTENING_GROUPS = config.channels.slack.listeningGroups.join(',');
+  }
   if (config.channels.whatsapp?.enabled) {
     env.WHATSAPP_ENABLED = 'true';
     if (config.channels.whatsapp.selfChat) {
@@ -186,6 +189,9 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   if (config.channels.whatsapp?.instantGroups?.length) {
     env.WHATSAPP_INSTANT_GROUPS = config.channels.whatsapp.instantGroups.join(',');
   }
+  if (config.channels.whatsapp?.listeningGroups?.length) {
+    env.WHATSAPP_LISTENING_GROUPS = config.channels.whatsapp.listeningGroups.join(',');
+  }
   if (config.channels.signal?.phone) {
     env.SIGNAL_PHONE_NUMBER = config.channels.signal.phone;
     // Signal selfChat defaults to true, so only set env if explicitly false
@@ -199,11 +205,17 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   if (config.channels.signal?.instantGroups?.length) {
     env.SIGNAL_INSTANT_GROUPS = config.channels.signal.instantGroups.join(',');
   }
+  if (config.channels.signal?.listeningGroups?.length) {
+    env.SIGNAL_LISTENING_GROUPS = config.channels.signal.listeningGroups.join(',');
+  }
   if (config.channels.telegram?.groupPollIntervalMin !== undefined) {
     env.TELEGRAM_GROUP_POLL_INTERVAL_MIN = String(config.channels.telegram.groupPollIntervalMin);
   }
   if (config.channels.telegram?.instantGroups?.length) {
     env.TELEGRAM_INSTANT_GROUPS = config.channels.telegram.instantGroups.join(',');
+  }
+  if (config.channels.telegram?.listeningGroups?.length) {
+    env.TELEGRAM_LISTENING_GROUPS = config.channels.telegram.listeningGroups.join(',');
   }
   if (config.channels.discord?.token) {
     env.DISCORD_BOT_TOKEN = config.channels.discord.token;
@@ -220,7 +232,10 @@ export function configToEnv(config: LettaBotConfig): Record<string, string> {
   if (config.channels.discord?.instantGroups?.length) {
     env.DISCORD_INSTANT_GROUPS = config.channels.discord.instantGroups.join(',');
   }
-  
+  if (config.channels.discord?.listeningGroups?.length) {
+    env.DISCORD_LISTENING_GROUPS = config.channels.discord.listeningGroups.join(',');
+  }
+
   // Features
   if (config.features?.cron) {
     env.CRON_ENABLED = 'true';
@@ -296,7 +311,7 @@ export function applyConfigToEnv(config: LettaBotConfig): void {
 /**
  * Create BYOK providers on Letta Cloud
  */
-export async function syncProviders(config: LettaBotConfig): Promise<void> {
+export async function syncProviders(config: Partial<LettaBotConfig> & Pick<LettaBotConfig, 'server'>): Promise<void> {
   if (config.server.mode !== 'cloud' || !config.server.apiKey) {
     return;
   }
@@ -359,46 +374,107 @@ export async function syncProviders(config: LettaBotConfig): Promise<void> {
 }
 
 /**
- * Fix instantGroups arrays that may contain large numeric IDs parsed by YAML.
+ * Fix group identifiers that may contain large numeric IDs parsed by YAML.
  * Discord snowflake IDs exceed Number.MAX_SAFE_INTEGER, so YAML parses them
- * as lossy JavaScript numbers. We re-read from the document AST to get the
- * original string representation.
+ * as lossy JavaScript numbers. We re-read from the document AST to preserve
+ * the original source text for:
+ * - instantGroups/listeningGroups arrays
+ * - groups map keys (new group mode config)
  */
-function fixInstantGroupIds(yamlContent: string, parsed: Partial<LettaBotConfig>): void {
+function fixLargeGroupIds(yamlContent: string, parsed: Partial<LettaBotConfig>): void {
   if (!parsed.channels) return;
+
+  const channels = ['telegram', 'slack', 'whatsapp', 'signal', 'discord'] as const;
+  const groupFields = ['instantGroups', 'listeningGroups'] as const;
 
   try {
     const doc = YAML.parseDocument(yamlContent);
-    const channels = ['telegram', 'slack', 'whatsapp', 'signal', 'discord'] as const;
 
     for (const ch of channels) {
-      const seq = doc.getIn(['channels', ch, 'instantGroups'], true);
-      if (YAML.isSeq(seq)) {
-        const fixed = seq.items.map((item: unknown) => {
-          if (YAML.isScalar(item)) {
-            // For numbers, use the original source text to avoid precision loss
-            if (typeof item.value === 'number' && item.source) {
-              return item.source;
+      for (const field of groupFields) {
+        const seq = doc.getIn(['channels', ch, field], true);
+        if (YAML.isSeq(seq)) {
+          const fixed = seq.items.map((item: unknown) => {
+            if (YAML.isScalar(item)) {
+              // For numbers, use the original source text to avoid precision loss
+              if (typeof item.value === 'number' && item.source) {
+                return item.source;
+              }
+              return String(item.value);
             }
-            return String(item.value);
+            return String(item);
+          });
+          const cfg = parsed.channels[ch];
+          if (cfg) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (cfg as any)[field] = fixed;
           }
-          return String(item);
-        });
+        }
+      }
+
+      // Also fix groups map keys (e.g. discord snowflake IDs)
+      const groupsNode = doc.getIn(['channels', ch, 'groups'], true);
+      if (YAML.isMap(groupsNode)) {
+        const fixedGroups: Record<string, unknown> = {};
+        for (const pair of groupsNode.items) {
+          const keyNode = (pair as { key?: unknown }).key;
+          const valueNode = (pair as { value?: unknown }).value;
+
+          let groupKey: string;
+          if (YAML.isScalar(keyNode)) {
+            if (typeof keyNode.value === 'number' && keyNode.source) {
+              groupKey = keyNode.source;
+            } else {
+              groupKey = String(keyNode.value);
+            }
+          } else {
+            groupKey = String(keyNode);
+          }
+
+          if (YAML.isMap(valueNode)) {
+            const groupConfig: Record<string, unknown> = {};
+            for (const settingPair of valueNode.items) {
+              const settingKeyNode = (settingPair as { key?: unknown }).key;
+              const settingValueNode = (settingPair as { value?: unknown }).value;
+              const settingKey = YAML.isScalar(settingKeyNode)
+                ? String(settingKeyNode.value)
+                : String(settingKeyNode);
+              if (YAML.isScalar(settingValueNode)) {
+                groupConfig[settingKey] = settingValueNode.value;
+              } else {
+                groupConfig[settingKey] = settingValueNode as unknown;
+              }
+            }
+            fixedGroups[groupKey] = groupConfig;
+          } else if (YAML.isScalar(valueNode)) {
+            fixedGroups[groupKey] = valueNode.value;
+          } else {
+            fixedGroups[groupKey] = valueNode as unknown;
+          }
+        }
         const cfg = parsed.channels[ch];
         if (cfg) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (cfg as any).instantGroups = fixed;
+          (cfg as any).groups = fixedGroups;
         }
       }
     }
   } catch {
     // Fallback: just ensure entries are strings (won't fix precision, but safe)
-    const channels = ['telegram', 'slack', 'whatsapp', 'signal', 'discord'] as const;
     for (const ch of channels) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cfg = parsed.channels?.[ch] as any;
-      if (cfg && Array.isArray(cfg.instantGroups)) {
-        cfg.instantGroups = cfg.instantGroups.map((v: unknown) => String(v));
+      for (const field of groupFields) {
+        if (cfg && Array.isArray(cfg[field])) {
+          cfg[field] = cfg[field].map((v: unknown) => String(v));
+        }
+      }
+      if (cfg && cfg.groups && typeof cfg.groups === 'object') {
+        const fixedGroups: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(cfg.groups as Record<string, unknown>)) {
+          fixedGroups[String(key)] = value;
+        }
+        cfg.groups = fixedGroups;
       }
     }
   }

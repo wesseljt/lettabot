@@ -43,4 +43,19 @@ describe('collectGroupBatchingConfig', () => {
     expect(instantIds.has('telegram-mtproto:-1002')).toBe(true);
     expect(instantIds.has('telegram:-1001')).toBe(false);
   });
+
+  it('collects listening groups for supported channels', () => {
+    const channels: AgentConfig['channels'] = {
+      slack: {
+        enabled: true,
+        botToken: 'xoxb-test',
+        appToken: 'xapp-test',
+        listeningGroups: ['C001'],
+      },
+    };
+
+    const { listeningIds } = collectGroupBatchingConfig(channels);
+
+    expect(listeningIds.has('slack:C001')).toBe(true);
+  });
 });

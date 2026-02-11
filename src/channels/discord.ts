@@ -11,6 +11,7 @@ import type { DmPolicy } from '../pairing/types.js';
 import { isUserAllowed, upsertPairingRequest } from '../pairing/store.js';
 import { buildAttachmentPath, downloadToFile } from './attachments.js';
 import { HELP_TEXT } from '../core/commands.js';
+import { isGroupAllowed, resolveGroupMode, type GroupModeConfig } from './group-mode.js';
 
 // Dynamic import to avoid requiring Discord deps if not used
 let Client: typeof import('discord.js').Client;
@@ -23,6 +24,7 @@ export interface DiscordConfig {
   allowedUsers?: string[];  // Discord user IDs
   attachmentsDir?: string;
   attachmentsMaxBytes?: number;
+  groups?: Record<string, GroupModeConfig>;  // Per-guild/channel settings
 }
 
 export class DiscordAdapter implements ChannelAdapter {
@@ -241,6 +243,25 @@ Ask the bot owner to approve with:
         const groupName = isGroup && 'name' in message.channel ? message.channel.name : undefined;
         const displayName = message.member?.displayName || message.author.globalName || message.author.username;
         const wasMentioned = isGroup && !!this.client?.user && message.mentions.has(this.client.user);
+        let isListeningMode = false;
+
+        // Group gating: config-based allowlist + mode
+        if (isGroup && this.config.groups) {
+          const chatId = message.channel.id;
+          const serverId = message.guildId;
+          const keys = [chatId];
+          if (serverId) keys.push(serverId);
+          if (!isGroupAllowed(this.config.groups, keys)) {
+            console.log(`[Discord] Group ${chatId} not in allowlist, ignoring`);
+            return;
+          }
+
+          const mode = resolveGroupMode(this.config.groups, keys, 'open');
+          if (mode === 'mention-only' && !wasMentioned) {
+            return; // Mention required but not mentioned -- silent drop
+          }
+          isListeningMode = mode === 'listen' && !wasMentioned;
+        }
 
         await this.onMessage({
           channel: 'discord',
@@ -255,6 +276,7 @@ Ask the bot owner to approve with:
           groupName,
           serverId: message.guildId || undefined,
           wasMentioned,
+          isListeningMode,
           attachments,
         });
       }
@@ -311,6 +333,19 @@ Ask the bot owner to approve with:
       return;
     }
     await message.edit(text);
+  }
+
+  async addReaction(chatId: string, messageId: string, emoji: string): Promise<void> {
+    if (!this.client) throw new Error('Discord not started');
+    const channel = await this.client.channels.fetch(chatId);
+    if (!channel || !channel.isTextBased()) {
+      throw new Error(`Discord channel not found or not text-based: ${chatId}`);
+    }
+
+    const textChannel = channel as { messages: { fetch: (id: string) => Promise<{ react: (input: string) => Promise<unknown> }> } };
+    const message = await textChannel.messages.fetch(messageId);
+    const resolved = resolveDiscordEmoji(emoji);
+    await message.react(resolved);
   }
 
   async sendTypingIndicator(chatId: string): Promise<void> {
@@ -434,6 +469,32 @@ Ask the bot owner to approve with:
     }
     return results;
   }
+}
+
+const DISCORD_EMOJI_ALIAS_TO_UNICODE: Record<string, string> = {
+  eyes: '\u{1F440}',
+  thumbsup: '\u{1F44D}',
+  thumbs_up: '\u{1F44D}',
+  '+1': '\u{1F44D}',
+  heart: '\u2764\uFE0F',
+  fire: '\u{1F525}',
+  smile: '\u{1F604}',
+  laughing: '\u{1F606}',
+  tada: '\u{1F389}',
+  clap: '\u{1F44F}',
+  ok_hand: '\u{1F44C}',
+};
+
+function resolveDiscordEmoji(input: string): string {
+  const aliasMatch = input.match(/^:([^:]+):$/);
+  const alias = aliasMatch ? aliasMatch[1] : null;
+  if (alias && DISCORD_EMOJI_ALIAS_TO_UNICODE[alias]) {
+    return DISCORD_EMOJI_ALIAS_TO_UNICODE[alias];
+  }
+  if (DISCORD_EMOJI_ALIAS_TO_UNICODE[input]) {
+    return DISCORD_EMOJI_ALIAS_TO_UNICODE[input];
+  }
+  return input;
 }
 
 type DiscordAttachment = {

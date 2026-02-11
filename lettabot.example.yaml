@@ -15,6 +15,7 @@ server:
 
 agent:
   name: LettaBot
+  # displayName: "💜 Signo"  # Prefix outbound messages (useful in multi-agent group chats)
   # Note: model is configured on the Letta agent server-side.
   # Select a model during `lettabot onboard` or change it with `lettabot model set <handle>`.
 
@@ -35,10 +36,27 @@ channels:
     enabled: true
     token: YOUR-TELEGRAM-BOT-TOKEN
     dmPolicy: pairing  # 'pairing', 'allowlist', or 'open'
+    # groupPollIntervalMin: 5       # Batch interval for group messages (default: 10)
+    # instantGroups: ["-100123456"] # Groups that bypass batching
+    # Group access + response mode:
+    # groups:
+    #   "*": { mode: listen }                      # Observe all groups; only reply when @mentioned
+    #   "-1001234567890": { mode: open }           # This group gets all messages
+    #   "-1009876543210": { mode: mention-only }   # Drop unless @mentioned
+    # mentionPatterns: ["hey bot"]                  # Additional regex patterns for mention detection
   # slack:
   #   enabled: true
   #   appToken: xapp-...
   #   botToken: xoxb-...
+  #   groups:
+  #     "*": { mode: listen }
+  #     "C0123456789": { mode: open }
+  # discord:
+  #   enabled: true
+  #   token: YOUR-DISCORD-BOT-TOKEN
+  #   groups:
+  #     "*": { mode: listen }
+  #     "1234567890123456789": { mode: open }  # Server or channel ID
   # whatsapp:
   #   enabled: true
   #   selfChat: false

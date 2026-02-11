@@ -126,6 +126,7 @@ The default config uses `agent:` and `channels:` at the top level for a single a
 |--------|------|-------------|
 | `agent.id` | string | Use existing agent (skips creation) |
 | `agent.name` | string | Name for new agent |
+| `agent.displayName` | string | Prefix outbound messages (e.g. `"💜 Signo"`) |
 
 > **Note:** The model is configured on the Letta agent server-side, not in the config file.
 > Use `lettabot model show` to see the current model and `lettabot model set <handle>` to change it.
@@ -146,6 +147,7 @@ server:
 
 agents:
   - name: work-assistant
+    # displayName: "🔧 Work"    # Optional: prefix outbound messages
     model: claude-sonnet-4
     # id: agent-abc123           # Optional: use existing agent
     channels:
@@ -184,6 +186,7 @@ Each entry in `agents:` accepts:
 |--------|------|----------|-------------|
 | `name` | string | Yes | Agent name (used for display, creation, and state isolation) |
 | `id` | string | No | Use existing agent ID (skips creation) |
+| `displayName` | string | No | Prefix outbound messages (e.g. `"💜 Signo"`) |
 | `model` | string | No | Model for agent creation |
 | `channels` | object | No | Channel configs (same schema as top-level `channels:`). At least one agent must have channels. |
 | `features` | object | No | Per-agent features (cron, heartbeat, maxToolCalls) |
@@ -261,6 +264,30 @@ channels:
 - **`instantGroups`** -- listed groups bypass debounce entirely
 
 The deprecated `groupPollIntervalMin` (minutes) still works for backward compatibility but `groupDebounceSec` takes priority.
+
+### Group Modes
+
+Use `groups.<id>.mode` to control how each group/channel behaves:
+
+- `open`: process and respond to all messages (default behavior)
+- `listen`: process all messages for context/memory, only respond when mentioned
+- `mention-only`: drop group messages unless the bot is mentioned
+
+You can also use `*` as a wildcard default:
+
+```yaml
+channels:
+  telegram:
+    groups:
+      "*": { mode: listen }
+      "-1001234567890": { mode: open }
+      "-1009876543210": { mode: mention-only }
+```
+
+Deprecated formats are still supported and auto-normalized with warnings:
+
+- `listeningGroups: ["id"]` -> `groups: { "id": { mode: listen } }`
+- `groups: { "id": { requireMention: true/false } }` -> `mode: mention-only/open`
 
 ### DM Policies
 

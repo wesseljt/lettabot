@@ -30,6 +30,11 @@ if (yamlConfig.agent?.model) {
 }
 applyConfigToEnv(yamlConfig);
 
+// Bridge DEBUG=1 to DEBUG_SDK so SDK-level dropped wire messages are visible
+if (process.env.DEBUG === '1' && !process.env.DEBUG_SDK) {
+  process.env.DEBUG_SDK = '1';
+}
+
 // Sync BYOK providers on startup (async, don't block)
 syncProviders(yamlConfig).catch(err => console.error('[Config] Failed to sync providers:', err));
 
@@ -289,6 +294,8 @@ function createChannelsForAgent(
         : undefined,
       attachmentsDir,
       attachmentsMaxBytes,
+      groups: agentConfig.channels.telegram!.groups,
+      mentionPatterns: agentConfig.channels.telegram!.mentionPatterns,
     }));
   }
 
@@ -318,6 +325,7 @@ function createChannelsForAgent(
         : undefined,
       attachmentsDir,
       attachmentsMaxBytes,
+      groups: agentConfig.channels.slack.groups,
     }));
   }
 
@@ -336,6 +344,8 @@ function createChannelsForAgent(
       selfChatMode,
       attachmentsDir,
       attachmentsMaxBytes,
+      groups: agentConfig.channels.whatsapp.groups,
+      mentionPatterns: agentConfig.channels.whatsapp.mentionPatterns,
     }));
   }
 
@@ -357,6 +367,8 @@ function createChannelsForAgent(
       selfChatMode,
       attachmentsDir,
       attachmentsMaxBytes,
+      groups: agentConfig.channels.signal.groups,
+      mentionPatterns: agentConfig.channels.signal.mentionPatterns,
     }));
   }
 
@@ -369,6 +381,7 @@ function createChannelsForAgent(
         : undefined,
       attachmentsDir,
       attachmentsMaxBytes,
+      groups: agentConfig.channels.discord.groups,
     }));
   }
 
@@ -381,26 +394,41 @@ function createChannelsForAgent(
 function createGroupBatcher(
   agentConfig: import('./config/types.js').AgentConfig,
   bot: import('./core/interfaces.js').AgentSession,
-): { batcher: GroupBatcher | null; intervals: Map<string, number>; instantIds: Set<string> } {
-  const { intervals, instantIds } = collectGroupBatchingConfig(agentConfig.channels);
+): { batcher: GroupBatcher | null; intervals: Map<string, number>; instantIds: Set<string>; listeningIds: Set<string> } {
+  const { intervals, instantIds, listeningIds } = collectGroupBatchingConfig(agentConfig.channels);
 
   if (instantIds.size > 0) {
     console.log(`[Groups] Instant groups: ${[...instantIds].join(', ')}`);
+  }
+  if (listeningIds.size > 0) {
+    console.log(`[Groups] Listening groups: ${[...listeningIds].join(', ')}`);
   }
 
   const batcher = intervals.size > 0 ? new GroupBatcher((msg, adapter) => {
     bot.processGroupBatch(msg, adapter);
   }) : null;
 
-  return { batcher, intervals, instantIds };
+  return { batcher, intervals, instantIds, listeningIds };
 }
 
 // Skills are installed to agent-scoped directory when agent is created (see core/bot.ts)
 
+function parseCsvList(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 // Global config (shared across all agents)
 const globalConfig = {
   workingDir: getWorkingDir(),
-  allowedTools: (process.env.ALLOWED_TOOLS || 'Bash,Read,Edit,Write,Glob,Grep,Task,web_search,conversation_search').split(','),
+  allowedTools: parseCsvList(
+    process.env.ALLOWED_TOOLS || 'Bash,Read,Edit,Write,Glob,Grep,Task,web_search,conversation_search',
+  ),
+  disallowedTools: parseCsvList(
+    process.env.DISALLOWED_TOOLS || 'EnterPlanMode,ExitPlanMode',
+  ),
   attachmentsMaxBytes: resolveAttachmentsMaxBytes(),
   attachmentsMaxAgeDays: resolveAttachmentsMaxAgeDays(),
   cronEnabled: process.env.CRON_ENABLED === 'true',  // Legacy env var fallback
@@ -472,6 +500,8 @@ async function main() {
       workingDir: globalConfig.workingDir,
       agentName: agentConfig.name,
       allowedTools: globalConfig.allowedTools,
+      disallowedTools: globalConfig.disallowedTools,
+      displayName: agentConfig.displayName,
       maxToolCalls: agentConfig.features?.maxToolCalls,
       skills: {
         cronEnabled: agentConfig.features?.cron ?? globalConfig.cronEnabled,
@@ -517,27 +547,27 @@ async function main() {
         console.warn(`[Agent:${agentConfig.name}] Failed to check tool approvals:`, err);
       });
     }
-    
+
     // Create and register channels
     const adapters = createChannelsForAgent(agentConfig, attachmentsDir, globalConfig.attachmentsMaxBytes);
     for (const adapter of adapters) {
       bot.registerChannel(adapter);
     }
-    
+
     // Setup group batching
-    const { batcher, intervals, instantIds } = createGroupBatcher(agentConfig, bot);
+    const { batcher, intervals, instantIds, listeningIds } = createGroupBatcher(agentConfig, bot);
     if (batcher) {
-      bot.setGroupBatcher(batcher, intervals, instantIds);
+      bot.setGroupBatcher(batcher, intervals, instantIds, listeningIds);
       services.groupBatchers.push(batcher);
     }
-    
+
     // Per-agent cron
     if (agentConfig.features?.cron ?? globalConfig.cronEnabled) {
       const cronService = new CronService(bot);
       await cronService.start();
       services.cronServices.push(cronService);
     }
-    
+
     // Per-agent heartbeat
     const heartbeatConfig = agentConfig.features?.heartbeat;
     const heartbeatService = new HeartbeatService(bot, {

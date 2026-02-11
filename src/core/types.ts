@@ -83,6 +83,7 @@ export interface InboundMessage {
   reaction?: InboundReaction;
   isBatch?: boolean;                  // Is this a batched group message?
   batchedMessages?: InboundMessage[]; // Original individual messages (for batch formatting)
+  isListeningMode?: boolean;          // Listening mode: agent processes for memory but response is suppressed
 }
 
 /**
@@ -123,6 +124,10 @@ export interface BotConfig {
   workingDir: string;
   agentName?: string; // Name for the agent (set via API after creation)
   allowedTools: string[];
+  disallowedTools?: string[];
+
+  // Display
+  displayName?: string; // Prefix outbound messages (e.g. "💜 Signo")
 
   // Skills
   skills?: SkillsConfig;
