@@ -148,12 +148,14 @@ import { normalizeAgents } from './config/types.js';
 import { LettaGateway } from './core/gateway.js';
 import { LettaBot } from './core/bot.js';
 import { TelegramAdapter } from './channels/telegram.js';
+import { TelegramMTProtoAdapter } from './channels/telegram-mtproto.js';
 import { SlackAdapter } from './channels/slack.js';
 import { WhatsAppAdapter } from './channels/whatsapp/index.js';
 import { SignalAdapter } from './channels/signal.js';
 import { DiscordAdapter } from './channels/discord.js';
 import { GroupBatcher } from './core/group-batcher.js';
 import { printStartupBanner } from './core/banner.js';
+import { collectGroupBatchingConfig } from './core/group-batching-config.js';
 import { CronService } from './cron/service.js';
 import { HeartbeatService } from './cron/heartbeat.js';
 import { PollingService, parseGmailAccounts } from './polling/service.js';
@@ -273,17 +275,44 @@ function createChannelsForAgent(
 ): import('./channels/types.js').ChannelAdapter[] {
   const adapters: import('./channels/types.js').ChannelAdapter[] = [];
 
-  if (agentConfig.channels.telegram?.token) {
+  // Mutual exclusion: cannot use both Telegram Bot API and MTProto simultaneously
+  const hasTelegramBot = !!agentConfig.channels.telegram?.token;
+  const hasTelegramMtproto = !!(agentConfig.channels['telegram-mtproto'] as any)?.apiId;
+
+  if (hasTelegramBot && hasTelegramMtproto) {
+    console.error(`\n  Error: Agent "${agentConfig.name}" has both telegram and telegram-mtproto configured.`);
+    console.error('  The Bot API adapter and MTProto adapter cannot run together.');
+    console.error('  Choose one: telegram (bot token) or telegram-mtproto (user account).\n');
+    process.exit(1);
+  }
+
+  if (hasTelegramBot) {
     adapters.push(new TelegramAdapter({
-      token: agentConfig.channels.telegram.token,
-      dmPolicy: agentConfig.channels.telegram.dmPolicy || 'pairing',
-      allowedUsers: agentConfig.channels.telegram.allowedUsers && agentConfig.channels.telegram.allowedUsers.length > 0
-        ? agentConfig.channels.telegram.allowedUsers.map(u => typeof u === 'string' ? parseInt(u, 10) : u)
+      token: agentConfig.channels.telegram!.token!,
+      dmPolicy: agentConfig.channels.telegram!.dmPolicy || 'pairing',
+      allowedUsers: agentConfig.channels.telegram!.allowedUsers && agentConfig.channels.telegram!.allowedUsers.length > 0
+        ? agentConfig.channels.telegram!.allowedUsers.map(u => typeof u === 'string' ? parseInt(u, 10) : u)
         : undefined,
       attachmentsDir,
       attachmentsMaxBytes,
-      groups: agentConfig.channels.telegram.groups,
-      mentionPatterns: agentConfig.channels.telegram.mentionPatterns,
+      groups: agentConfig.channels.telegram!.groups,
+      mentionPatterns: agentConfig.channels.telegram!.mentionPatterns,
+    }));
+  }
+
+  if (hasTelegramMtproto) {
+    const mtprotoConfig = agentConfig.channels['telegram-mtproto'] as any;
+    adapters.push(new TelegramMTProtoAdapter({
+      apiId: mtprotoConfig.apiId,
+      apiHash: mtprotoConfig.apiHash,
+      phoneNumber: mtprotoConfig.phoneNumber,
+      databaseDirectory: mtprotoConfig.databaseDirectory || './data/telegram-mtproto',
+      dmPolicy: mtprotoConfig.dmPolicy || 'pairing',
+      allowedUsers: mtprotoConfig.allowedUsers && mtprotoConfig.allowedUsers.length > 0
+        ? mtprotoConfig.allowedUsers.map((u: string | number) => typeof u === 'string' ? parseInt(u, 10) : u)
+        : undefined,
+      groupPolicy: mtprotoConfig.groupPolicy || 'both',
+      adminChatId: mtprotoConfig.adminChatId,
     }));
   }
 
@@ -361,39 +390,13 @@ function createChannelsForAgent(
 }
 
 /**
- * Resolve group debounce value to milliseconds.
- * Prefers groupDebounceSec, falls back to deprecated groupPollIntervalMin.
- * Default: 5 seconds (5000ms).
- */
-function resolveDebounceMs(channel: { groupDebounceSec?: number; groupPollIntervalMin?: number }): number {
-  if (channel.groupDebounceSec !== undefined) return channel.groupDebounceSec * 1000;
-  if (channel.groupPollIntervalMin !== undefined) return channel.groupPollIntervalMin * 60 * 1000;
-  return 5000; // 5 seconds default
-}
-
-/**
  * Create and configure a group batcher for an agent
  */
 function createGroupBatcher(
   agentConfig: import('./config/types.js').AgentConfig,
   bot: import('./core/interfaces.js').AgentSession,
 ): { batcher: GroupBatcher | null; intervals: Map<string, number>; instantIds: Set<string>; listeningIds: Set<string> } {
-  const intervals = new Map<string, number>(); // channel -> debounce ms
-  const instantIds = new Set<string>();
-  const listeningIds = new Set<string>();
-
-  const channelNames = ['telegram', 'slack', 'whatsapp', 'signal', 'discord'] as const;
-  for (const channel of channelNames) {
-    const cfg = agentConfig.channels[channel];
-    if (!cfg) continue;
-    intervals.set(channel, resolveDebounceMs(cfg));
-    for (const id of (cfg as any).instantGroups || []) {
-      instantIds.add(`${channel}:${id}`);
-    }
-    for (const id of (cfg as any).listeningGroups || []) {
-      listeningIds.add(`${channel}:${id}`);
-    }
-  }
+  const { intervals, instantIds, listeningIds } = collectGroupBatchingConfig(agentConfig.channels);
 
   if (instantIds.size > 0) {
     console.log(`[Groups] Instant groups: ${[...instantIds].join(', ')}`);
@@ -524,7 +527,7 @@ async function main() {
         initialStatus = bot.getStatus();
       }
     }
-    
+
     // Container deploy: discover by name
     if (!initialStatus.agentId && isContainerDeploy) {
       const found = await findAgentByName(agentConfig.name);
@@ -534,7 +537,7 @@ async function main() {
         initialStatus = bot.getStatus();
       }
     }
-    
+
     if (!initialStatus.agentId) {
       console.log(`[Agent:${agentConfig.name}] No agent found - will create on first message`);
     }

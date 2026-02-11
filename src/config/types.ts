@@ -22,6 +22,7 @@ export interface AgentConfig {
   /** Channels this agent connects to */
   channels: {
     telegram?: TelegramConfig;
+    'telegram-mtproto'?: TelegramMTProtoConfig;
     slack?: SlackConfig;
     whatsapp?: WhatsAppConfig;
     signal?: SignalConfig;
@@ -76,6 +77,7 @@ export interface LettaBotConfig {
   // Channel configurations
   channels: {
     telegram?: TelegramConfig;
+    'telegram-mtproto'?: TelegramMTProtoConfig;
     slack?: SlackConfig;
     whatsapp?: WhatsAppConfig;
     signal?: SignalConfig;
@@ -168,6 +170,18 @@ export interface TelegramConfig {
   groups?: Record<string, GroupConfig>;  // Per-group settings, "*" for defaults
 }
 
+export interface TelegramMTProtoConfig {
+  enabled: boolean;
+  phoneNumber?: string;          // E.164 format: +1234567890
+  apiId?: number;                // From my.telegram.org
+  apiHash?: string;              // From my.telegram.org
+  databaseDirectory?: string;    // Default: ./data/telegram-mtproto
+  dmPolicy?: 'pairing' | 'allowlist' | 'open';
+  allowedUsers?: number[];       // Telegram user IDs
+  groupPolicy?: 'mention' | 'reply' | 'both' | 'off';
+  adminChatId?: number;          // Chat ID for pairing request notifications
+}
+
 export interface SlackConfig {
   enabled: boolean;
   appToken?: string;
@@ -221,6 +235,25 @@ export interface DiscordConfig {
   instantGroups?: string[];       // Guild/server IDs or channel IDs that bypass batching
   listeningGroups?: string[];     // @deprecated Use groups.<id>.mode = "listen"
   groups?: Record<string, GroupConfig>;  // Per-guild/channel settings, "*" for defaults
+}
+
+/**
+ * Telegram MTProto (user account) configuration.
+ * Uses TDLib for user account mode instead of Bot API.
+ * Cannot be used simultaneously with TelegramConfig (bot mode).
+ */
+export interface TelegramMTProtoConfig {
+  enabled: boolean;
+  phoneNumber?: string;          // E.164 format: +1234567890
+  apiId?: number;                // From my.telegram.org
+  apiHash?: string;              // From my.telegram.org
+  databaseDirectory?: string;    // Default: ./data/telegram-mtproto
+  dmPolicy?: 'pairing' | 'allowlist' | 'open';
+  allowedUsers?: number[];              // Telegram user IDs
+  groupPolicy?: 'mention' | 'reply' | 'both' | 'off';
+  adminChatId?: number;          // Chat ID for pairing request notifications
+  groupDebounceSec?: number;     // Debounce interval in seconds (default: 5, 0 = immediate)
+  instantGroups?: string[];      // Chat IDs that bypass batching
 }
 
 export interface GoogleAccountConfig {
@@ -352,6 +385,10 @@ export function normalizeAgents(config: LettaBotConfig): AgentConfig[] {
       normalizeLegacyGroupFields(telegram, `${sourcePath}.telegram`);
       normalized.telegram = telegram;
     }
+    // telegram-mtproto: check apiId as the key credential
+    if (channels['telegram-mtproto']?.enabled !== false && channels['telegram-mtproto']?.apiId) {
+      normalized['telegram-mtproto'] = channels['telegram-mtproto'];
+    }
     if (channels.slack?.enabled !== false && channels.slack?.botToken && channels.slack?.appToken) {
       const slack = { ...channels.slack };
       normalizeLegacyGroupFields(slack, `${sourcePath}.slack`);
@@ -404,6 +441,20 @@ export function normalizeAgents(config: LettaBotConfig): AgentConfig[] {
       token: process.env.TELEGRAM_BOT_TOKEN,
       dmPolicy: (process.env.TELEGRAM_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
       allowedUsers: parseList(process.env.TELEGRAM_ALLOWED_USERS),
+    };
+  }
+  // telegram-mtproto env var fallback (only if telegram bot not configured)
+  if (!channels.telegram && !channels['telegram-mtproto'] && process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_PHONE_NUMBER) {
+    channels['telegram-mtproto'] = {
+      enabled: true,
+      apiId: parseInt(process.env.TELEGRAM_API_ID, 10),
+      apiHash: process.env.TELEGRAM_API_HASH,
+      phoneNumber: process.env.TELEGRAM_PHONE_NUMBER,
+      databaseDirectory: process.env.TELEGRAM_MTPROTO_DB_DIR || './data/telegram-mtproto',
+      dmPolicy: (process.env.TELEGRAM_DM_POLICY as 'pairing' | 'allowlist' | 'open') || 'pairing',
+      allowedUsers: parseList(process.env.TELEGRAM_ALLOWED_USERS)?.map(s => parseInt(s, 10)).filter(n => !isNaN(n)),
+      groupPolicy: (process.env.TELEGRAM_GROUP_POLICY as 'mention' | 'reply' | 'both' | 'off') || 'both',
+      adminChatId: process.env.TELEGRAM_ADMIN_CHAT_ID ? parseInt(process.env.TELEGRAM_ADMIN_CHAT_ID, 10) : undefined,
     };
   }
   if (!channels.slack && process.env.SLACK_BOT_TOKEN && process.env.SLACK_APP_TOKEN) {
