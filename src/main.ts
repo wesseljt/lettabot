@@ -149,6 +149,7 @@ import { WhatsAppAdapter } from './channels/whatsapp/index.js';
 import { SignalAdapter } from './channels/signal.js';
 import { DiscordAdapter } from './channels/discord.js';
 import { GroupBatcher } from './core/group-batcher.js';
+import { collectGroupBatchingConfig } from './core/group-batching-config.js';
 import { CronService } from './cron/service.js';
 import { HeartbeatService } from './cron/heartbeat.js';
 import { PollingService, parseGmailAccounts } from './polling/service.js';
@@ -375,65 +376,13 @@ function createChannelsForAgent(
 }
 
 /**
- * Resolve group debounce value to milliseconds.
- * Prefers groupDebounceSec, falls back to deprecated groupPollIntervalMin.
- * Default: 5 seconds (5000ms).
- */
-function resolveDebounceMs(channel: { groupDebounceSec?: number; groupPollIntervalMin?: number }): number {
-  if (channel.groupDebounceSec !== undefined) return channel.groupDebounceSec * 1000;
-  if (channel.groupPollIntervalMin !== undefined) return channel.groupPollIntervalMin * 60 * 1000;
-  return 5000; // 5 seconds default
-}
-
-/**
  * Create and configure a group batcher for an agent
  */
 function createGroupBatcher(
   agentConfig: import('./config/types.js').AgentConfig,
   bot: import('./core/interfaces.js').AgentSession,
 ): { batcher: GroupBatcher | null; intervals: Map<string, number>; instantIds: Set<string> } {
-  const intervals = new Map<string, number>(); // channel -> debounce ms
-  const instantIds = new Set<string>();
-
-  // Collect debounce intervals from channel configs (stored as ms)
-  if (agentConfig.channels.telegram) {
-    intervals.set('telegram', resolveDebounceMs(agentConfig.channels.telegram));
-    for (const id of agentConfig.channels.telegram.instantGroups || []) {
-      instantIds.add(`telegram:${id}`);
-    }
-  }
-  // telegram-mtproto has independent channel IDs for group batching
-  const mtprotoConfig = agentConfig.channels['telegram-mtproto'];
-  if (mtprotoConfig) {
-    intervals.set('telegram-mtproto', resolveDebounceMs(mtprotoConfig));
-    for (const id of mtprotoConfig.instantGroups || []) {
-      instantIds.add(`telegram-mtproto:${id}`);
-    }
-  }
-  if (agentConfig.channels.slack) {
-    intervals.set('slack', resolveDebounceMs(agentConfig.channels.slack));
-    for (const id of agentConfig.channels.slack.instantGroups || []) {
-      instantIds.add(`slack:${id}`);
-    }
-  }
-  if (agentConfig.channels.whatsapp) {
-    intervals.set('whatsapp', resolveDebounceMs(agentConfig.channels.whatsapp));
-    for (const id of agentConfig.channels.whatsapp.instantGroups || []) {
-      instantIds.add(`whatsapp:${id}`);
-    }
-  }
-  if (agentConfig.channels.signal) {
-    intervals.set('signal', resolveDebounceMs(agentConfig.channels.signal));
-    for (const id of agentConfig.channels.signal.instantGroups || []) {
-      instantIds.add(`signal:${id}`);
-    }
-  }
-  if (agentConfig.channels.discord) {
-    intervals.set('discord', resolveDebounceMs(agentConfig.channels.discord));
-    for (const id of agentConfig.channels.discord.instantGroups || []) {
-      instantIds.add(`discord:${id}`);
-    }
-  }
+  const { intervals, instantIds } = collectGroupBatchingConfig(agentConfig.channels);
 
   if (instantIds.size > 0) {
     console.log(`[Groups] Instant groups: ${[...instantIds].join(', ')}`);
