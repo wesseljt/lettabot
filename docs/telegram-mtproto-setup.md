@@ -207,6 +207,10 @@ TELEGRAM_ADMIN_CHAT_ID=137747014
 
 If no admin chat is configured, pairing codes are logged to the console instead.
 
+**Pairing request behavior:**
+- Repeated messages from the same unapproved user do not create duplicate admin notifications.
+- If the pending pairing queue is full, the user gets: *"Too many pending pairing requests. Please try again later."*
+
 ## Group Chat Policy
 
 Since MTProto gives you full group access, you need to control when the agent responds in groups. The **group policy** determines this:
