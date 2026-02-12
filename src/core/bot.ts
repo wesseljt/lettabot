@@ -17,6 +17,8 @@ import type { GroupBatcher } from './group-batcher.js';
 import { loadMemoryBlocks } from './memory.js';
 import { SYSTEM_PROMPT } from './system-prompt.js';
 import { parseDirectives, stripActionsBlock, type Directive } from './directives.js';
+import { createManageTodoTool } from '../tools/todo.js';
+import { syncTodosFromTool } from '../todo/store.js';
 
 
 /**
@@ -153,12 +155,67 @@ export class LettaBot implements AgentSession {
   // Session options (shared by processMessage and sendToAgent)
   // =========================================================================
 
+  private getTodoAgentKey(): string {
+    return this.store.agentId || this.config.agentName || 'LettaBot';
+  }
+
+  private syncTodoToolCall(streamMsg: StreamMsg): void {
+    if (streamMsg.type !== 'tool_call') return;
+
+    const normalizedToolName = (streamMsg.toolName || '').toLowerCase();
+    const isBuiltInTodoTool = normalizedToolName === 'todowrite'
+      || normalizedToolName === 'todo_write'
+      || normalizedToolName === 'writetodos'
+      || normalizedToolName === 'write_todos';
+    if (!isBuiltInTodoTool) return;
+
+    const input = (streamMsg.toolInput && typeof streamMsg.toolInput === 'object')
+      ? streamMsg.toolInput as Record<string, unknown>
+      : null;
+    if (!input || !Array.isArray(input.todos)) return;
+
+    const incoming: Array<{
+      content?: string;
+      description?: string;
+      status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+    }> = [];
+    for (const item of input.todos) {
+      if (!item || typeof item !== 'object') continue;
+      const obj = item as Record<string, unknown>;
+      const statusRaw = typeof obj.status === 'string' ? obj.status : '';
+      if (!['pending', 'in_progress', 'completed', 'cancelled'].includes(statusRaw)) continue;
+      incoming.push({
+        content: typeof obj.content === 'string' ? obj.content : undefined,
+        description: typeof obj.description === 'string' ? obj.description : undefined,
+        status: statusRaw as 'pending' | 'in_progress' | 'completed' | 'cancelled',
+      });
+    }
+    if (incoming.length === 0) return;
+
+    try {
+      const summary = syncTodosFromTool(this.getTodoAgentKey(), incoming);
+      if (summary.added > 0 || summary.updated > 0) {
+        console.log(`[Bot] Synced ${summary.totalIncoming} todo(s) from ${streamMsg.toolName} into heartbeat store (added=${summary.added}, updated=${summary.updated})`);
+      }
+    } catch (err) {
+      console.warn('[Bot] Failed to sync TodoWrite todos:', err instanceof Error ? err.message : err);
+    }
+  }
+
   private baseSessionOptions(canUseTool?: CanUseToolCallback) {
     return {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
-      disallowedTools: this.config.disallowedTools || [],
+      disallowedTools: [
+        // Block built-in TodoWrite -- it requires interactive approval (fails
+        // silently during heartbeats) and writes to the CLI's own store rather
+        // than lettabot's persistent heartbeat store.  The agent should use the
+        // custom manage_todo tool instead.
+        'TodoWrite',
+        ...(this.config.disallowedTools || []),
+      ],
       cwd: this.config.workingDir,
+      tools: [createManageTodoTool(this.getTodoAgentKey())],
       // In bypassPermissions mode, canUseTool is only called for interactive
       // tools (AskUserQuestion, ExitPlanMode). When no callback is provided
       // (background triggers), the SDK auto-denies interactive tools.
@@ -773,6 +830,7 @@ export class LettaBot implements AgentSession {
 
           // Log meaningful events with structured summaries
           if (streamMsg.type === 'tool_call') {
+            this.syncTodoToolCall(streamMsg);
             console.log(`[Stream] >>> TOOL CALL: ${streamMsg.toolName || 'unknown'} (id: ${streamMsg.toolCallId?.slice(0, 12) || '?'})`);
             sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'tool_result') {
@@ -1018,6 +1076,9 @@ export class LettaBot implements AgentSession {
       try {
         let response = '';
         for await (const msg of stream()) {
+          if (msg.type === 'tool_call') {
+            this.syncTodoToolCall(msg);
+          }
           if (msg.type === 'assistant') {
             response += msg.content || '';
           }
@@ -1108,9 +1169,10 @@ export class LettaBot implements AgentSession {
     throw new Error('Either text or filePath must be provided');
   }
 
-  getStatus(): { agentId: string | null; channels: string[] } {
+  getStatus(): { agentId: string | null; conversationId: string | null; channels: string[] } {
     return {
       agentId: this.store.agentId,
+      conversationId: this.store.conversationId,
       channels: Array.from(this.channels.keys()),
     };
   }
