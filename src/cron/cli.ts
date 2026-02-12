@@ -349,8 +349,8 @@ Create options:
   --name, -n <name>       Task name (required)
   --schedule, -s <cron>   Cron expression for recurring tasks
   --at, -a <datetime>     ISO datetime for one-off reminder (auto-deletes after)
-  --message, -m <msg>     Message to send (required)
-  --deliver, -d <target>  Delivery target (channel:chatId)
+  --message, -m <msg>     Prompt sent to agent when job fires (required)
+  --deliver, -d <target>  Auto-deliver response to channel:chatId (omit for silent mode)
   --disabled              Create in disabled state
 
 Examples:
